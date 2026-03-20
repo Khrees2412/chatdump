@@ -1,0 +1,62 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 360 96"
+  role="img"
+  aria-labelledby="logo-horizontal-title logo-horizontal-desc"
+>
+  <title id="logo-horizontal-title">chatdump horizontal logo</title>
+  <desc id="logo-horizontal-desc">
+    The chatdump wordmark paired with a logo mark that turns a chat bubble into a document.
+  </desc>
+  <defs>
+    <linearGradient id="horizontal-stream" x1="18" y1="43" x2="50" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#BC8442" />
+      <stop offset="1" stop-color="#31433A" />
+    </linearGradient>
+  </defs>
+  <g transform="translate(8 8)" fill="none" stroke="#161310" stroke-linecap="round" stroke-linejoin="round">
+    <path
+      d="M33 11h10l8 8v23a6 6 0 0 1-6 6H31a6 6 0 0 1-6-6V17a6 6 0 0 1 6-6Z"
+      fill="#FBF8F3"
+      stroke-width="2.6"
+    />
+    <path d="M43 11v8h8" stroke-width="2.6" />
+    <path
+      d="M17.4 17.7h7c6.4 0 11.5 4.8 11.5 10.8s-5.1 10.8-11.5 10.8H20l-6.8 3.4 2.4-5.9a10.2 10.2 0 0 1-5.1-8.4c0-6 5.2-10.8 11.5-10.8Z"
+      fill="#FBF8F3"
+      stroke-width="2.6"
+    />
+    <path d="M33.5 25h7.7" stroke="#BC8442" stroke-width="2.35" />
+    <path d="M33.5 30.2h10.3" stroke="#31433A" stroke-width="2.35" />
+    <path d="M33.5 35.4h10.3" stroke="#31433A" stroke-width="2.35" />
+    <path d="M33.5 40.6h6.8" stroke="#31433A" stroke-width="2.35" />
+    <path
+      d="M17.7 31.5c4.6-4.8 8.9-6.9 13.2-6.9 7.1 0 9.6 5.9 14.2 5.9H51"
+      stroke="url(#horizontal-stream)"
+      stroke-width="4.35"
+    />
+  </g>
+  <g transform="translate(92 51)">
+    <text
+      x="0"
+      y="0"
+      fill="#161310"
+      font-family="'IBM Plex Mono', 'SFMono-Regular', 'Menlo', monospace"
+      font-size="30"
+      font-weight="600"
+      letter-spacing="1.1"
+    >
+      chatdump
+    </text>
+    <text
+      x="2"
+      y="24"
+      fill="#897D70"
+      font-family="'IBM Plex Mono', 'SFMono-Regular', 'Menlo', monospace"
+      font-size="10"
+      letter-spacing="3.6"
+    >
+      PUBLIC SHARE TO MARKDOWN
+    </text>
+  </g>
+</svg>

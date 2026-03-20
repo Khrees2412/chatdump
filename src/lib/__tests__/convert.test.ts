@@ -3,6 +3,7 @@ import {
   convertShareUrlToMarkdown,
   extractConversationFromHtml,
 } from '../extract'
+import { renderConversationToMarkdown } from '../render'
 
 const structuredHtml = `
 <!doctype html>
@@ -48,6 +49,71 @@ const structuredHtml = `
                           "text": "numbers = [1, 2, 3]\\nsum(numbers)"
                         }
                       ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    </script>
+  </head>
+  <body></body>
+</html>
+`
+
+const structuredHtmlWithSystem = `
+<!doctype html>
+<html>
+  <head>
+    <title>System Filter Chat - ChatGPT</title>
+    <script id="__NEXT_DATA__" type="application/json">
+      {
+        "props": {
+          "pageProps": {
+            "shareData": {
+              "conversation_id": "conv_system",
+              "title": "System Filter Chat",
+              "mapping": {
+                "1": {
+                  "id": "1",
+                  "children": ["2"],
+                  "message": {
+                    "id": "m1",
+                    "author": { "role": "system" },
+                    "create_time": 1700000000,
+                    "content": {
+                      "content_type": "text",
+                      "parts": ["Hidden instruction"]
+                    }
+                  }
+                },
+                "2": {
+                  "id": "2",
+                  "parent": "1",
+                  "children": ["3"],
+                  "message": {
+                    "id": "m2",
+                    "author": { "role": "user" },
+                    "create_time": 1700000001,
+                    "content": {
+                      "content_type": "text",
+                      "parts": ["Show me the visible chat."]
+                    }
+                  }
+                },
+                "3": {
+                  "id": "3",
+                  "parent": "2",
+                  "children": [],
+                  "message": {
+                    "id": "m3",
+                    "author": { "role": "assistant", "name": "GPT-4o" },
+                    "create_time": 1700000002,
+                    "content": {
+                      "content_type": "text",
+                      "parts": ["Visible answer"]
                     }
                   }
                 }
@@ -266,6 +332,28 @@ describe('convertShareUrlToMarkdown', () => {
     expect(result.markdown).toContain('sum(numbers)')
   })
 
+  test('forwards includeSystemMessages to the markdown renderer', async () => {
+    const result = await convertShareUrlToMarkdown(
+      'https://chatgpt.com/share/12345678-1234-1234-1234-1234567890ab',
+      {
+        exportedAt: new Date('2026-03-20T00:00:00.000Z'),
+        fetchImpl: async () =>
+          new Response(structuredHtmlWithSystem, {
+            headers: {
+              'content-type': 'text/html',
+            },
+            status: 200,
+          }),
+        includeSystemMessages: false,
+      },
+    )
+
+    expect(result.markdown).not.toContain('## System')
+    expect(result.markdown).not.toContain('Hidden instruction')
+    expect(result.markdown).toContain('## User')
+    expect(result.markdown).toContain('## Assistant (GPT-4o)')
+  })
+
   test('falls back to browser extraction when static HTML has no conversation', async () => {
     const result = await convertShareUrlToMarkdown(
       'https://chatgpt.com/share/12345678-1234-1234-1234-1234567890ab',
@@ -311,5 +399,43 @@ describe('convertShareUrlToMarkdown', () => {
     ).rejects.toThrow(
       'could not extract conversation data from share page: received a generic ChatGPT page instead of a public shared conversation (page title: ChatGPT); install playwright to enable browser fallback',
     )
+  })
+})
+
+describe('renderConversationToMarkdown', () => {
+  test('can exclude system messages from the rendered markdown', () => {
+    const markdown = renderConversationToMarkdown(
+      {
+        createdAt: '2026-03-20T00:00:00.000Z',
+        messages: [
+          {
+            blocks: [{ kind: 'text', text: 'Internal instruction' }],
+            id: 'ignored',
+            role: 'system',
+          },
+          {
+            blocks: [{ kind: 'text', text: 'Hi' }],
+            id: 'user-1',
+            role: 'user',
+          },
+          {
+            authorName: 'GPT-4o',
+            blocks: [{ kind: 'text', text: 'Hello' }],
+            id: 'assistant-1',
+            role: 'assistant',
+          },
+        ],
+        sourceUrl: 'https://chatgpt.com/share/example',
+        title: 'Filtered Chat',
+      },
+      {
+        exportedAt: new Date('2026-03-20T00:00:00.000Z'),
+        includeSystemMessages: false,
+      },
+    )
+
+    expect(markdown).not.toContain('## System')
+    expect(markdown).toContain('## User')
+    expect(markdown).toContain('## Assistant (GPT-4o)')
   })
 })

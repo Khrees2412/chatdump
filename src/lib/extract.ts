@@ -61,6 +61,7 @@ export async function convertShareUrlToMarkdown(
   const markdown = renderConversationToMarkdown(conversation, {
     exportedAt: options.exportedAt,
     includeMetadata: options.includeMetadata,
+    includeSystemMessages: options.includeSystemMessages,
   })
 
   return {

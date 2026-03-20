@@ -27,6 +27,14 @@ export const Route = createRootRoute({
           'Convert public ChatGPT share URLs into clean, deterministic Markdown you can review, copy, and reuse.',
       },
     ],
+    links: [
+      {
+        rel: 'icon',
+        type: 'image/svg+xml',
+        href: '/favicon.svg',
+        sizes: 'any',
+      },
+    ],
   }),
   component: RootComponent,
 })

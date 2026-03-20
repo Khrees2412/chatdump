@@ -1,0 +1,53 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 64 64"
+  role="img"
+  aria-labelledby="favicon-title favicon-desc"
+>
+  <title id="favicon-title">chatdump favicon</title>
+  <desc id="favicon-desc">
+    A warm paper tile containing the chatdump logo mark.
+  </desc>
+  <defs>
+    <linearGradient id="chatdump-tile" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FCF8F1" />
+      <stop offset="1" stop-color="#EEE5D9" />
+    </linearGradient>
+    <linearGradient id="favicon-stream" x1="18" y1="29" x2="50" y2="34" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#BC8442" />
+      <stop offset="1" stop-color="#31433A" />
+    </linearGradient>
+  </defs>
+  <rect
+    x="5"
+    y="5"
+    width="54"
+    height="54"
+    rx="16"
+    fill="url(#chatdump-tile)"
+    stroke="#161310"
+    stroke-opacity="0.12"
+  />
+  <g transform="translate(2 2)" fill="none" stroke="#161310" stroke-linecap="round" stroke-linejoin="round">
+    <path
+      d="M33 13h10l8 8v23a6 6 0 0 1-6 6H31a6 6 0 0 1-6-6V19a6 6 0 0 1 6-6Z"
+      fill="#FBF8F3"
+      stroke-width="2.6"
+    />
+    <path d="M43 13v8h8" stroke-width="2.6" />
+    <path
+      d="M17.4 19.7h7c6.4 0 11.5 4.8 11.5 10.8s-5.1 10.8-11.5 10.8H20l-6.8 3.4 2.4-5.9a10.2 10.2 0 0 1-5.1-8.4c0-6 5.2-10.8 11.5-10.8Z"
+      fill="#FBF8F3"
+      stroke-width="2.6"
+    />
+    <path d="M33.5 27h7.7" stroke="#BC8442" stroke-width="2.35" />
+    <path d="M33.5 32.2h10.3" stroke="#31433A" stroke-width="2.35" />
+    <path d="M33.5 37.4h10.3" stroke="#31433A" stroke-width="2.35" />
+    <path d="M33.5 42.6h6.8" stroke="#31433A" stroke-width="2.35" />
+    <path
+      d="M17.7 33.5c4.6-4.8 8.9-6.9 13.2-6.9 7.1 0 9.6 5.9 14.2 5.9H51"
+      stroke="url(#favicon-stream)"
+      stroke-width="4.35"
+    />
+  </g>
+</svg>

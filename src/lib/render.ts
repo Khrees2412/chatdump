@@ -7,10 +7,14 @@ import type {
 
 export function renderConversationToMarkdown(
   conversation: NormalizedConversation,
-  options: Pick<ConvertOptions, 'exportedAt' | 'includeMetadata'> = {},
+  options: Pick<
+    ConvertOptions,
+    'exportedAt' | 'includeMetadata' | 'includeSystemMessages'
+  > = {},
 ): string {
   const title = cleanText(conversation.title) || 'ChatGPT Conversation'
   const includeMetadata = options.includeMetadata !== false
+  const includeSystemMessages = options.includeSystemMessages !== false
   const sections: string[] = [`# ${title}`]
 
   if (includeMetadata) {
@@ -27,7 +31,11 @@ export function renderConversationToMarkdown(
     )
   }
 
-  for (const message of conversation.messages) {
+  const messages = includeSystemMessages
+    ? conversation.messages
+    : conversation.messages.filter((message) => message.role !== 'system')
+
+  for (const message of messages) {
     sections.push(renderMessage(message))
   }
 

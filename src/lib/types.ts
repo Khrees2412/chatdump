@@ -79,6 +79,7 @@ export interface ConvertOptions {
   exportedAt?: Date
   fetchImpl?: FetchImpl
   includeMetadata?: boolean
+  includeSystemMessages?: boolean
   title?: string
 }
 
