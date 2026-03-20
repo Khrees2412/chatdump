@@ -16,7 +16,77 @@ type Toast = {
   message: string
 }
 
+type PersistedHomeState = {
+  markdown: string
+  outputMode: 'markdown' | 'preview'
+  url: string
+  warnings: string[]
+}
+
 const monoCapsClass = 'font-mono uppercase tracking-[0.14em]'
+const persistedHomeStateKey = 'chatdump.home-state.v1'
+
+function readPersistedHomeState(): PersistedHomeState | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  try {
+    const rawState = window.sessionStorage.getItem(persistedHomeStateKey)
+
+    if (!rawState) {
+      return null
+    }
+
+    const parsedState = JSON.parse(rawState)
+
+    if (typeof parsedState !== 'object' || parsedState === null) {
+      window.sessionStorage.removeItem(persistedHomeStateKey)
+      return null
+    }
+
+    const outputMode =
+      parsedState.outputMode === 'preview' ? 'preview' : 'markdown'
+    const url = typeof parsedState.url === 'string' ? parsedState.url : ''
+    const markdown =
+      typeof parsedState.markdown === 'string' ? parsedState.markdown : ''
+    const warnings = Array.isArray(parsedState.warnings)
+      ? parsedState.warnings.filter(
+          (warning: unknown): warning is string => typeof warning === 'string',
+        )
+      : []
+
+    if (!url && !markdown && warnings.length === 0 && outputMode === 'markdown') {
+      return null
+    }
+
+    return {
+      url,
+      markdown,
+      warnings,
+      outputMode,
+    }
+  } catch {
+    window.sessionStorage.removeItem(persistedHomeStateKey)
+    return null
+  }
+}
+
+function writePersistedHomeState(state: PersistedHomeState) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.sessionStorage.setItem(persistedHomeStateKey, JSON.stringify(state))
+}
+
+function clearPersistedHomeState() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.sessionStorage.removeItem(persistedHomeStateKey)
+}
 
 const convertShare = createServerFn({ method: 'POST' })
   .inputValidator((data: ConvertInput) => ({
@@ -47,6 +117,8 @@ function Home() {
   const [outputMode, setOutputMode] = useState<'markdown' | 'preview'>('markdown')
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
   const [toasts, setToasts] = useState<Toast[]>([])
+  const [hasHydratedState, setHasHydratedState] = useState(false)
+  const urlInputRef = useRef<HTMLInputElement | null>(null)
   const outputSectionRef = useRef<HTMLElement | null>(null)
   const outputBodyRef = useRef<HTMLElement | null>(null)
   const nextToastIdRef = useRef(0)
@@ -108,10 +180,7 @@ function Home() {
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setIsPending(true)
-    setMarkdown('')
     setError(null)
-    setOutputMode('markdown')
-    setWarnings([])
     setCopyState('idle')
     clearToasts()
 
@@ -130,13 +199,29 @@ function Home() {
           const message =
             cause instanceof Error ? cause.message : 'Conversion failed'
 
-          setMarkdown('')
           setError(message)
-          setOutputMode('markdown')
         })
         .finally(() => {
           setIsPending(false)
         })
+    })
+  }
+
+  function handleEditUrl() {
+    setMarkdown('')
+    setWarnings([])
+    setError(null)
+    setOutputMode('markdown')
+    setCopyState('idle')
+    clearToasts()
+    previousFeedbackRef.current = {
+      error: null,
+      warnings: [],
+    }
+
+    window.requestAnimationFrame(() => {
+      urlInputRef.current?.focus()
+      urlInputRef.current?.select()
     })
   }
 
@@ -205,6 +290,45 @@ function Home() {
   }, [])
 
   useEffect(() => {
+    const persistedState = readPersistedHomeState()
+
+    if (persistedState) {
+      setUrl(persistedState.url)
+      setMarkdown(persistedState.markdown)
+      setWarnings(persistedState.warnings)
+      setOutputMode(persistedState.outputMode)
+      previousFeedbackRef.current = {
+        error: null,
+        warnings: persistedState.warnings,
+      }
+    }
+
+    setHasHydratedState(true)
+  }, [])
+
+  useEffect(() => {
+    if (!hasHydratedState) {
+      return
+    }
+
+    if (!url && !markdown && warnings.length === 0 && outputMode === 'markdown') {
+      clearPersistedHomeState()
+      return
+    }
+
+    try {
+      writePersistedHomeState({
+        url,
+        markdown,
+        warnings,
+        outputMode,
+      })
+    } catch {
+      // Ignore storage failures and keep the in-memory state intact.
+    }
+  }, [hasHydratedState, markdown, outputMode, url, warnings])
+
+  useEffect(() => {
     if (!hasResult) {
       return
     }
@@ -263,7 +387,7 @@ function Home() {
         </div>
       ) : null}
 
-      <div className="mx-auto grid min-h-full max-w-[1380px] gap-4 max-[720px]:gap-3">
+      <div className="mx-auto grid max-w-[1380px] gap-4 max-[720px]:gap-3">
         <header className="flex items-center justify-between gap-4 px-1 pt-1 max-[720px]:px-0">
           <div className="flex items-center gap-[0.9rem]">
             <span className="grid h-12 w-12 place-items-center rounded-2xl border border-[rgba(32,24,17,0.08)] bg-[linear-gradient(135deg,rgba(188,132,66,0.16),rgba(49,67,58,0.08)),rgba(255,255,255,0.56)] shadow-[inset_0_1px_0_rgba(255,255,255,0.45),0_14px_28px_rgba(62,43,23,0.08)]">
@@ -284,7 +408,7 @@ function Home() {
         <div className="grid gap-4">
           {!hasResult ? (
             <section
-              className="panel-shell grid content-start gap-6 p-6 max-[720px]:gap-5 max-[720px]:rounded-[1.5rem] max-[720px]:p-4 min-[1100px]:min-h-[calc(100dvh-7.35rem)]"
+              className="panel-shell grid content-start gap-6 p-6 max-[720px]:gap-5 max-[720px]:rounded-[1.5rem] max-[720px]:p-4"
             >
               <div className="grid gap-3">
                 <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[rgba(49,67,58,0.12)] bg-[rgba(255,255,255,0.54)] px-3 py-1.5 font-mono text-[0.72rem] uppercase tracking-[0.12em] text-ink-soft shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] min-[721px]:hidden">
@@ -338,6 +462,7 @@ function Home() {
                       inputMode="url"
                       name="url"
                       placeholder="chatgpt.com/share/..."
+                      ref={urlInputRef}
                       required
                       type="url"
                       value={url}
@@ -379,7 +504,7 @@ function Home() {
 
           {hasResult ? (
             <section
-              className="panel-shell grid h-[min(32rem,calc(100dvh-3rem))] min-h-[28rem] grid-rows-[auto_1fr] gap-6 p-6 max-[1099px]:h-[min(31rem,calc(100dvh-1.75rem))] max-[1099px]:min-h-[24rem] max-[720px]:h-[calc(100dvh-1.5rem)] max-[720px]:min-h-[29.5rem] max-[720px]:gap-5 max-[720px]:rounded-[1.5rem] max-[720px]:p-4 min-[1100px]:h-[min(34rem,calc(100dvh-8.5rem))]"
+              className="panel-shell grid h-[min(32rem,calc(100dvh-3rem))] min-h-[28rem] grid-rows-[auto_1fr] gap-6 p-6 max-[1099px]:h-[min(31rem,calc(100dvh-1.75rem))] max-[1099px]:min-h-[24rem] max-[720px]:h-[calc(100dvh-1.5rem)] max-[720px]:min-h-[29.5rem] max-[720px]:gap-5 max-[720px]:rounded-[1.5rem] max-[720px]:p-4 min-[1100px]:h-[calc(100dvh-8.5rem)]"
               ref={outputSectionRef}
             >
               <div className="flex items-start justify-between gap-4 max-[720px]:flex-col max-[720px]:items-stretch">
@@ -418,7 +543,17 @@ function Home() {
                     ) : null}
                   </div>
 
-                  <div className="grid gap-2 max-[720px]:grid-cols-2 min-[721px]:flex min-[721px]:flex-wrap min-[721px]:justify-end">
+                  <div className="grid gap-2 min-[721px]:flex min-[721px]:flex-wrap min-[721px]:justify-end">
+                    <Button onClick={handleEditUrl}>
+                      <svg aria-hidden="true" className="h-[1.05rem] w-[1.05rem]" viewBox="0 0 24 24">
+                        <path
+                          d="M19 12H5M11 6l-6 6 6 6"
+                          className="fill-none stroke-current stroke-[1.8] stroke-linecap-round stroke-linejoin-round"
+                        />
+                      </svg>
+                      <span>Edit URL</span>
+                    </Button>
+
                     <Button
                       aria-pressed={isRenderedPreview}
                       pressed={isRenderedPreview}
