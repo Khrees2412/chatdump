@@ -25,4 +25,16 @@ describe('normalizeShareUrl', () => {
       'https://gemini.google.com/share/ee5bab956b9f',
     )
   })
+
+  test('canonicalizes Claude share URLs', () => {
+    const normalized = normalizeShareUrl(
+      'https://claude.ai/share/51c6593c-c94b-4708-ba87-92e60b693f7b?foo=bar',
+    )
+
+    expect(normalized.provider).toBe('claude')
+    expect(normalized.shareId).toBe('51c6593c-c94b-4708-ba87-92e60b693f7b')
+    expect(normalized.url.toString()).toBe(
+      'https://claude.ai/share/51c6593c-c94b-4708-ba87-92e60b693f7b',
+    )
+  })
 })

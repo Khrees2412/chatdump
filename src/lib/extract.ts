@@ -53,12 +53,10 @@ export async function convertShareUrlToMarkdown(
   const fetchImpl = options.fetchImpl ?? fetch
 
   const cached = await getOrCreateCachedShareConversation(url.toString(), async () => {
-    const { finalUrl, html } = await fetchSharePage(url, fetchImpl)
-    const { conversation, warnings } = await extractConversation(html, {
+    const { conversation, warnings } = await loadShareConversation(url, {
       browserExtractor: options.browserExtractor,
-      browserUrl: url.toString(),
       enableBrowserFallback: options.enableBrowserFallback,
-      sourceUrl: finalUrl,
+      fetchImpl,
     })
 
     return {
@@ -127,6 +125,41 @@ export async function fetchSharePage(
   }
 }
 
+async function loadShareConversation(
+  url: URL,
+  options: {
+    browserExtractor?: BrowserExtractor
+    enableBrowserFallback?: boolean
+    fetchImpl: FetchImpl
+  },
+): Promise<{ conversation: NormalizedConversation; warnings: string[] }> {
+  try {
+    const { finalUrl, html } = await fetchSharePage(url, options.fetchImpl)
+
+    return await extractConversation(html, {
+      browserExtractor: options.browserExtractor,
+      browserUrl: url.toString(),
+      enableBrowserFallback: options.enableBrowserFallback,
+      sourceUrl: finalUrl,
+    })
+  } catch (cause) {
+    if (
+      !(cause instanceof ChatdumpError) ||
+      cause.code !== 'FETCH_FAILED' ||
+      options.enableBrowserFallback === false
+    ) {
+      throw cause
+    }
+
+    console.warn('[chatdump] Share page fetch failed; trying browser fallback', {
+      browserUrl: url.toString(),
+      error: cause.message,
+    })
+
+    return resolveBrowserFallback(url.toString(), options.browserExtractor, cause)
+  }
+}
+
 async function extractConversation(
   html: string,
   options: {
@@ -158,21 +191,17 @@ async function extractConversation(
       options.browserExtractor,
     )
 
-    switch (fallback.status) {
-      case 'success':
-        return fallback.result
-      case 'unavailable':
-        throw new ChatdumpError(
-          'EXTRACT_FAILED',
-          `${cause.message}; ${getBrowserFallbackUnavailableMessage()}`,
-        )
-      case 'failed':
-        throw new ChatdumpError(
-          'EXTRACT_FAILED',
-          `${cause.message}; browser fallback failed: ${getFailureMessage(fallback.cause)}`,
-        )
-    }
+    return resolveBrowserFallbackResult(fallback, cause, 'EXTRACT_FAILED')
   }
+}
+
+async function resolveBrowserFallback(
+  url: string,
+  browserExtractor: BrowserExtractor | undefined,
+  originalCause: ChatdumpError,
+): Promise<{ conversation: NormalizedConversation; warnings: string[] }> {
+  const fallback = await tryBrowserFallback(url, browserExtractor)
+  return resolveBrowserFallbackResult(fallback, originalCause, originalCause.code)
 }
 
 async function tryBrowserFallback(
@@ -263,6 +292,33 @@ async function tryBrowserFallback(
       cause,
       status: 'failed',
     }
+  }
+}
+
+function resolveBrowserFallbackResult(
+  fallback:
+    | {
+        result: { conversation: NormalizedConversation; warnings: string[] }
+        status: 'success'
+      }
+    | { status: 'failed'; cause: unknown }
+    | { status: 'unavailable' },
+  originalCause: ChatdumpError,
+  errorCode: ChatdumpError['code'],
+): { conversation: NormalizedConversation; warnings: string[] } {
+  switch (fallback.status) {
+    case 'success':
+      return fallback.result
+    case 'unavailable':
+      throw new ChatdumpError(
+        errorCode,
+        `${originalCause.message}; ${getBrowserFallbackUnavailableMessage()}`,
+      )
+    case 'failed':
+      throw new ChatdumpError(
+        errorCode,
+        `${originalCause.message}; browser fallback failed: ${getFailureMessage(fallback.cause)}`,
+      )
   }
 }
 

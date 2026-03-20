@@ -1,5 +1,9 @@
 import { createRequire } from 'node:module'
 import {
+  extractClaudeConversationPayloads,
+  isClaudeSnapshotResponseUrl,
+} from './claude'
+import {
   extractGeminiConversationPayloads,
   isGeminiConversationResponseUrl,
 } from './gemini'
@@ -8,6 +12,8 @@ import { tryNormalizeShareUrl, type ShareProvider } from './url'
 
 const BROWSER_NAVIGATION_TIMEOUT_MS = 15_000
 const BROWSER_SIGNAL_TIMEOUT_MS = 5_000
+const BROWSER_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36'
 const require = createRequire(import.meta.url)
 
 type PlaywrightModule = {
@@ -118,11 +124,10 @@ async function extractConversationFromLaunchedBrowser(
 ): Promise<BrowserExtractResult> {
   const provider = detectShareProvider(url)
   const page = await browser.newPage({
-    userAgent: 'chatdump/0.1 (+browser fallback)',
+    userAgent: BROWSER_USER_AGENT,
   })
   const warnings: string[] = []
-  const geminiPayloadsPromise =
-    provider === 'gemini' ? waitForGeminiConversationPayloads(page, url) : null
+  const providerPayloadsPromise = waitForProviderPayloads(page, provider, url)
 
   try {
     await page.goto(url, {
@@ -144,14 +149,11 @@ async function extractConversationFromLaunchedBrowser(
     await waitForProviderSignal(page, provider)
 
     const pageResult = await snapshotPage(page)
-    const geminiPayloads =
-      provider === 'gemini' && geminiPayloadsPromise
-        ? await geminiPayloadsPromise
-        : []
+    const providerPayloads = await providerPayloadsPromise
 
     const result = {
       ...pageResult,
-      payloads: [...(pageResult.payloads ?? []), ...geminiPayloads],
+      payloads: [...(pageResult.payloads ?? []), ...providerPayloads],
       warnings,
     } satisfies BrowserExtractResult
 
@@ -186,6 +188,12 @@ async function waitForProviderSignal(page: any, provider: ShareProvider) {
             document.querySelector('chat-app') &&
               /(?:^|\n)\s*You said(?:\n|$)/i.test(document.body.innerText),
           )
+      : provider === 'claude'
+        ? () =>
+            Boolean(
+              /Shared by/i.test(document.body.innerText) &&
+                /This is a copy of a chat/i.test(document.body.innerText),
+            )
       : () => {
           const globalScope = window as unknown as Record<string, unknown>
 
@@ -203,6 +211,51 @@ async function waitForProviderSignal(page: any, provider: ShareProvider) {
       timeout: BROWSER_SIGNAL_TIMEOUT_MS,
     })
     .catch(() => undefined)
+}
+
+async function waitForProviderPayloads(
+  page: any,
+  provider: ShareProvider,
+  url: string,
+): Promise<unknown[]> {
+  switch (provider) {
+    case 'claude':
+      return waitForClaudeSnapshotPayloads(page, url)
+    case 'gemini':
+      return waitForGeminiConversationPayloads(page, url)
+    default:
+      return []
+  }
+}
+
+async function waitForClaudeSnapshotPayloads(
+  page: any,
+  url: string,
+): Promise<unknown[]> {
+  try {
+    const response = await page.waitForResponse(
+      (candidate: any) => isClaudeSnapshotResponseUrl(candidate.url()),
+      {
+        timeout: BROWSER_NAVIGATION_TIMEOUT_MS,
+      },
+    )
+    const responseText = await response.text()
+    const payloads = extractClaudeConversationPayloads(responseText)
+
+    logInfo('Captured Claude snapshot payload', {
+      payloadCount: payloads.length,
+      responseUrl: response.url(),
+      url,
+    })
+
+    return payloads
+  } catch (cause) {
+    logWarn('Claude snapshot payload capture did not complete', {
+      error: getErrorMessage(cause),
+      url,
+    })
+    return []
+  }
 }
 
 async function waitForGeminiConversationPayloads(

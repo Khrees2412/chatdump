@@ -37,6 +37,7 @@ Initial support targets public share URLs in canonical forms such as:
 - `https://chat.openai.com/share/<id>`
 - `https://gemini.google.com/share/<id>`
 - `https://g.co/gemini/share/<id>`
+- `https://claude.ai/share/<id>`
 
 The implementation should also tolerate redirects between supported
 share domains.

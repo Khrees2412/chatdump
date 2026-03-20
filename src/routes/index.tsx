@@ -480,7 +480,8 @@ function Home() {
                   <p className="font-mono text-[0.8rem] leading-[1.6] tracking-[0.02em] text-ink-soft">
                     Supports `chatgpt.com/share/...`,
                     `chat.openai.com/share/...`, and
-                    `gemini.google.com/share/...`.
+                    `gemini.google.com/share/...`, and
+                    `claude.ai/share/...`.
                   </p>
                 </label>
 

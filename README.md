@@ -52,6 +52,7 @@ Useful options:
 - `https://chat.openai.com/share/<id>`
 - `https://gemini.google.com/share/<id>`
 - `https://g.co/gemini/share/<id>`
+- `https://claude.ai/share/<id>`
 
 Redirects between supported share domains are handled.
 
@@ -67,3 +68,4 @@ bun run typecheck
 
 - Only public share pages are supported.
 - Extraction prefers embedded structured data and falls back to DOM/browser extraction when needed.
+- Claude shares currently rely on browser fallback because direct server-side fetches can be challenged.

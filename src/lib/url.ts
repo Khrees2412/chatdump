@@ -1,6 +1,6 @@
 import { ChatdumpError } from './errors'
 
-export type ShareProvider = 'chatgpt' | 'gemini'
+export type ShareProvider = 'chatgpt' | 'claude' | 'gemini'
 
 export interface ParsedShareUrl {
   provider: ShareProvider
@@ -18,6 +18,9 @@ const PROVIDER_DETAILS: Record<
 > = {
   chatgpt: {
     canonicalHost: 'chatgpt.com',
+  },
+  claude: {
+    canonicalHost: 'claude.ai',
   },
   gemini: {
     canonicalHost: 'gemini.google.com',
@@ -87,6 +90,8 @@ function getProviderForHost(hostname: string): ShareProvider {
     case 'chat.openai.com':
     case 'chatgpt.com':
       return 'chatgpt'
+    case 'claude.ai':
+      return 'claude'
     case 'g.co':
     case 'gemini.google.com':
       return 'gemini'
@@ -104,6 +109,15 @@ function readShareId(
 ): string | null {
   if (
     (hostname === 'chat.openai.com' || hostname === 'chatgpt.com') &&
+    pathParts.length === 2 &&
+    pathParts[0] === 'share' &&
+    pathParts[1]
+  ) {
+    return pathParts[1]
+  }
+
+  if (
+    hostname === 'claude.ai' &&
     pathParts.length === 2 &&
     pathParts[0] === 'share' &&
     pathParts[1]
