@@ -16,6 +16,7 @@
     "baseUrl": "."
   },
   "include": [
+    "server.ts",
     "src/**/*.ts",
     "src/**/*.tsx",
     "vite.config.ts"
