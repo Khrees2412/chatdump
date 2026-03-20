@@ -21,7 +21,11 @@ import type {
   TextBlock,
 } from './types'
 import { getOrCreateCachedShareConversation } from './share-cache'
-import { validateShareUrl } from './url'
+import {
+  getDefaultConversationTitle,
+  normalizeShareUrl,
+  tryNormalizeShareUrl,
+} from './url'
 
 const BLOCK_TAGS = new Set([
   'article',
@@ -45,23 +49,23 @@ export async function convertShareUrlToMarkdown(
   rawUrl: string,
   options: ConvertOptions = {},
 ): Promise<ConvertResult> {
-  const url = validateShareUrl(rawUrl)
+  const { url } = normalizeShareUrl(rawUrl)
   const fetchImpl = options.fetchImpl ?? fetch
-
-  const cached = await getOrCreateCachedShareConversation(url.toString(), async () => {
-    const { finalUrl, html } = await fetchSharePage(url, fetchImpl)
-    const { conversation, warnings } = await extractConversation(html, {
+  const loader = async () => {
+    const { conversation, warnings } = await loadShareConversation(url, {
       browserExtractor: options.browserExtractor,
-      browserUrl: url.toString(),
       enableBrowserFallback: options.enableBrowserFallback,
-      sourceUrl: finalUrl,
+      fetchImpl,
     })
 
     return {
       conversation,
       warnings,
     }
-  })
+  }
+  const cached = options.disableCache
+    ? await loader()
+    : await getOrCreateCachedShareConversation(url.toString(), loader)
 
   const conversation = cached.conversation
 
@@ -123,6 +127,41 @@ export async function fetchSharePage(
   }
 }
 
+async function loadShareConversation(
+  url: URL,
+  options: {
+    browserExtractor?: BrowserExtractor
+    enableBrowserFallback?: boolean
+    fetchImpl: FetchImpl
+  },
+): Promise<{ conversation: NormalizedConversation; warnings: string[] }> {
+  try {
+    const { finalUrl, html } = await fetchSharePage(url, options.fetchImpl)
+
+    return await extractConversation(html, {
+      browserExtractor: options.browserExtractor,
+      browserUrl: url.toString(),
+      enableBrowserFallback: options.enableBrowserFallback,
+      sourceUrl: finalUrl,
+    })
+  } catch (cause) {
+    if (
+      !(cause instanceof ChatdumpError) ||
+      cause.code !== 'FETCH_FAILED' ||
+      options.enableBrowserFallback === false
+    ) {
+      throw cause
+    }
+
+    console.warn('[chatdump] Share page fetch failed; trying browser fallback', {
+      browserUrl: url.toString(),
+      error: cause.message,
+    })
+
+    return resolveBrowserFallback(url.toString(), options.browserExtractor, cause)
+  }
+}
+
 async function extractConversation(
   html: string,
   options: {
@@ -154,21 +193,17 @@ async function extractConversation(
       options.browserExtractor,
     )
 
-    switch (fallback.status) {
-      case 'success':
-        return fallback.result
-      case 'unavailable':
-        throw new ChatdumpError(
-          'EXTRACT_FAILED',
-          `${cause.message}; ${getBrowserFallbackUnavailableMessage()}`,
-        )
-      case 'failed':
-        throw new ChatdumpError(
-          'EXTRACT_FAILED',
-          `${cause.message}; browser fallback failed: ${getFailureMessage(fallback.cause)}`,
-        )
-    }
+    return resolveBrowserFallbackResult(fallback, cause, 'EXTRACT_FAILED')
   }
+}
+
+async function resolveBrowserFallback(
+  url: string,
+  browserExtractor: BrowserExtractor | undefined,
+  originalCause: ChatdumpError,
+): Promise<{ conversation: NormalizedConversation; warnings: string[] }> {
+  const fallback = await tryBrowserFallback(url, browserExtractor)
+  return resolveBrowserFallbackResult(fallback, originalCause, originalCause.code)
 }
 
 async function tryBrowserFallback(
@@ -198,8 +233,8 @@ async function tryBrowserFallback(
 
     const warnings = [...(browserResult.warnings ?? [])]
     const pageTitle = browserResult.html
-      ? extractPageTitle(load(browserResult.html))
-      : 'ChatGPT Conversation'
+      ? extractPageTitle(load(browserResult.html), browserResult.sourceUrl)
+      : getDefaultConversationTitle(browserResult.sourceUrl)
     const conversation = selectBestConversationFromPayloads(
       browserResult.payloads ?? [],
       browserResult.sourceUrl,
@@ -259,6 +294,33 @@ async function tryBrowserFallback(
       cause,
       status: 'failed',
     }
+  }
+}
+
+function resolveBrowserFallbackResult(
+  fallback:
+    | {
+        result: { conversation: NormalizedConversation; warnings: string[] }
+        status: 'success'
+      }
+    | { status: 'failed'; cause: unknown }
+    | { status: 'unavailable' },
+  originalCause: ChatdumpError,
+  errorCode: ChatdumpError['code'],
+): { conversation: NormalizedConversation; warnings: string[] } {
+  switch (fallback.status) {
+    case 'success':
+      return fallback.result
+    case 'unavailable':
+      throw new ChatdumpError(
+        errorCode,
+        `${originalCause.message}; ${getBrowserFallbackUnavailableMessage()}`,
+      )
+    case 'failed':
+      throw new ChatdumpError(
+        errorCode,
+        `${originalCause.message}; browser fallback failed: ${getFailureMessage(fallback.cause)}`,
+      )
   }
 }
 
@@ -328,7 +390,8 @@ function buildExtractionFailureMessage(
   $: CheerioAPI,
   sourceUrl: string,
 ): string {
-  const pageTitle = extractPageTitle($)
+  const defaultTitle = getDefaultConversationTitle(sourceUrl)
+  const pageTitle = extractPageTitle($, sourceUrl)
   const scriptTexts = $('script')
     .toArray()
     .map((element) => $(element).html()?.trim() ?? '')
@@ -341,7 +404,7 @@ function buildExtractionFailureMessage(
     /(?:^|\b)sign up(?:\b|$)/i.test(bodyText)
   const redirectedAwayFromShare = didRedirectAwayFromShare(sourceUrl)
   const titleSuffix =
-    pageTitle && pageTitle !== 'ChatGPT Conversation' ? ` (page title: ${pageTitle})` : ''
+    pageTitle && pageTitle !== defaultTitle ? ` (page title: ${pageTitle})` : ''
 
   if (redirectedAwayFromShare) {
     return `could not extract conversation data from share page: request resolved to a non-share page (${sourceUrl})${titleSuffix}`
@@ -352,27 +415,21 @@ function buildExtractionFailureMessage(
   }
 
   if (!hasDomMessages && looksLikeLoginPage) {
-    return `could not extract conversation data from share page: received a generic ChatGPT page instead of a public shared conversation${titleSuffix}`
+    return `could not extract conversation data from share page: received a generic page instead of a public shared conversation${titleSuffix}`
   }
 
   return `could not extract conversation data from share page: no conversation payload or message markup was found${titleSuffix}`
 }
 
 function didRedirectAwayFromShare(sourceUrl: string): boolean {
-  try {
-    const parsed = new URL(sourceUrl)
-    const parts = parsed.pathname.split('/').filter(Boolean)
-    return parts.length < 2 || parts[0] !== 'share'
-  } catch {
-    return false
-  }
+  return tryNormalizeShareUrl(sourceUrl) === null
 }
 
 function extractStructuredConversation(
   $: CheerioAPI,
   sourceUrl: string,
 ): NormalizedConversation | null {
-  const pageTitle = extractPageTitle($)
+  const pageTitle = extractPageTitle($, sourceUrl)
   const targetedConversation = selectBestConversationFromPayloads(
     collectFastStructuredPayloads($),
     sourceUrl,
@@ -413,6 +470,7 @@ function selectBestConversationFromCandidates(
   sourceUrl: string,
   pageTitle: string,
 ): NormalizedConversation | null {
+  const defaultTitle = getDefaultConversationTitle(sourceUrl)
   let best: { conversation: NormalizedConversation; score: number } | null = null
 
   for (const candidate of candidates) {
@@ -429,7 +487,7 @@ function selectBestConversationFromCandidates(
     const score =
       conversation.messages.length * 10 +
       (conversation.conversationId ? 4 : 0) +
-      (conversation.title !== 'ChatGPT Conversation' ? 2 : 0)
+      (conversation.title !== defaultTitle ? 2 : 0)
 
     if (!best || score > best.score) {
       best = {
@@ -1028,7 +1086,7 @@ function normalizeMappingConversation(
       readString(candidate.title) ??
       readString(candidate.name) ??
       pageTitle ??
-      'ChatGPT Conversation',
+      getDefaultConversationTitle(sourceUrl),
   }
 }
 
@@ -1072,7 +1130,7 @@ function normalizeMessagesConversation(
       readString(candidate.title) ??
       readString(candidate.name) ??
       pageTitle ??
-      'ChatGPT Conversation',
+      getDefaultConversationTitle(sourceUrl),
   }
 }
 
@@ -1336,7 +1394,7 @@ function extractDomConversation(
   return {
     messages,
     sourceUrl,
-    title: extractPageTitle($),
+    title: extractPageTitle($, sourceUrl),
   }
 }
 
@@ -1621,12 +1679,18 @@ function normalizeInlineText(text: string): string {
   return text.replace(/\s+/g, ' ').trim()
 }
 
-function extractPageTitle($: CheerioAPI): string {
-  return (
+function extractPageTitle($: CheerioAPI, sourceUrl?: string): string {
+  const rawTitle =
     $('meta[property="og:title"]').attr('content')?.trim() ||
-    $('title').text().replace(/\s*-\s*ChatGPT$/i, '').trim() ||
-    'ChatGPT Conversation'
-  )
+    $('title').text().trim()
+  const cleanedTitle = rawTitle
+    .replace(/^[\u200e\u200f\u202a-\u202e]+/gu, '')
+    .replace(/\s*-\s*ChatGPT$/i, '')
+    .replace(/^Gemini\s*-\s*/i, '')
+    .replace(/\s*-\s*Gemini$/i, '')
+    .trim()
+
+  return cleanedTitle || getDefaultConversationTitle(sourceUrl)
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

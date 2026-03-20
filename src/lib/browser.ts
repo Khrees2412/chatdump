@@ -1,8 +1,19 @@
 import { createRequire } from 'node:module'
+import {
+  extractClaudeConversationPayloads,
+  isClaudeSnapshotResponseUrl,
+} from './claude'
+import {
+  extractGeminiConversationPayloads,
+  isGeminiConversationResponseUrl,
+} from './gemini'
 import type { BrowserExtractResult } from './types'
+import { tryNormalizeShareUrl, type ShareProvider } from './url'
 
 const BROWSER_NAVIGATION_TIMEOUT_MS = 15_000
 const BROWSER_SIGNAL_TIMEOUT_MS = 5_000
+const BROWSER_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36'
 const require = createRequire(import.meta.url)
 
 type PlaywrightModule = {
@@ -17,6 +28,11 @@ type ServerlessChromiumModule = {
 type ServerlessBrowserRuntime = {
   chromiumPackage: ServerlessChromiumModule
   playwrightCore: PlaywrightModule
+}
+
+type PlaywrightBrowser = {
+  close: () => Promise<void>
+  newPage: (options?: Record<string, unknown>) => Promise<any>
 }
 
 export async function extractConversationInBrowser(
@@ -56,84 +72,10 @@ export async function extractConversationInBrowser(
     headless: true,
   })
 
+  logInfo('Playwright browser launched', { url })
+
   try {
-    logInfo('Playwright browser launched', { url })
-
-    const page = await browser.newPage({
-      userAgent: 'chatdump/0.1 (+browser fallback)',
-    })
-
-    await page.goto(url, {
-      timeout: BROWSER_NAVIGATION_TIMEOUT_MS,
-      waitUntil: 'domcontentloaded',
-    })
-
-    logInfo('Playwright page loaded', {
-      pageUrl: page.url(),
-      title: await page.title().catch(() => ''),
-      url,
-    })
-
-    await page
-      .waitForFunction(
-        () => {
-          const globalScope = window as unknown as Record<string, unknown>
-
-          return Boolean(
-            globalScope.__NEXT_DATA__ ||
-              globalScope.__staticRouterHydrationData ||
-              (globalScope.__reactRouterDataRouter as { state?: unknown } | undefined)?.state ||
-              globalScope.__remixContext ||
-              document.querySelector('[data-message-author-role]'),
-          )
-        },
-        {
-          timeout: BROWSER_SIGNAL_TIMEOUT_MS,
-        },
-      )
-      .catch(() => undefined)
-
-    const result = await page.evaluate(() => {
-      const globalScope = window as unknown as Record<string, unknown>
-      const routerData = globalScope.__reactRouterDataRouter as
-        | { state?: { loaderData?: unknown } }
-        | undefined
-      const remixData = globalScope.__remixContext as
-        | { state?: { loaderData?: unknown } }
-        | undefined
-      const staticRouterData = globalScope.__staticRouterHydrationData as
-        | { loaderData?: unknown }
-        | undefined
-
-      return {
-        html: document.documentElement.outerHTML,
-        payloads: [
-          globalScope.__NEXT_DATA__,
-          staticRouterData,
-          staticRouterData?.loaderData,
-          routerData?.state,
-          routerData?.state?.loaderData,
-          remixData,
-          remixData?.state,
-          remixData?.state?.loaderData,
-        ].filter((value) => Boolean(value)),
-        sourceUrl: window.location.href,
-      } satisfies BrowserExtractResult
-    })
-
-    logInfo('Playwright browser extraction completed', {
-      payloadCount: result.payloads?.length ?? 0,
-      sourceUrl: result.sourceUrl,
-      url,
-    })
-
-    return result
-  } catch (cause) {
-    logError('Playwright browser extraction failed', {
-      error: getErrorMessage(cause),
-      url,
-    })
-    throw cause
+    return await extractConversationFromLaunchedBrowser(browser, url)
   } finally {
     await browser.close().catch(() => undefined)
   }
@@ -167,13 +109,27 @@ async function extractConversationInServerlessBrowser(
     headless: true,
   })
 
+  logInfo('Playwright browser launched', { url })
+
   try {
-    logInfo('Playwright browser launched', { url })
+    return await extractConversationFromLaunchedBrowser(browser, url)
+  } finally {
+    await browser.close().catch(() => undefined)
+  }
+}
 
-    const page = await browser.newPage({
-      userAgent: 'chatdump/0.1 (+browser fallback)',
-    })
+async function extractConversationFromLaunchedBrowser(
+  browser: PlaywrightBrowser,
+  url: string,
+): Promise<BrowserExtractResult> {
+  const provider = detectShareProvider(url)
+  const page = await browser.newPage({
+    userAgent: BROWSER_USER_AGENT,
+  })
+  const warnings: string[] = []
+  const providerPayloadsPromise = waitForProviderPayloads(page, provider, url)
 
+  try {
     await page.goto(url, {
       timeout: BROWSER_NAVIGATION_TIMEOUT_MS,
       waitUntil: 'domcontentloaded',
@@ -181,13 +137,64 @@ async function extractConversationInServerlessBrowser(
 
     logInfo('Playwright page loaded', {
       pageUrl: page.url(),
+      provider,
       title: await page.title().catch(() => ''),
       url,
     })
 
-    await page
-      .waitForFunction(
-        () => {
+    if (provider === 'gemini') {
+      warnings.push(...(await maybeAcceptGeminiConsent(page, url)))
+    }
+
+    await waitForProviderSignal(page, provider)
+
+    const pageResult = await snapshotPage(page)
+    const providerPayloads = await providerPayloadsPromise
+
+    const result = {
+      ...pageResult,
+      payloads: [...(pageResult.payloads ?? []), ...providerPayloads],
+      warnings,
+    } satisfies BrowserExtractResult
+
+    logInfo('Playwright browser extraction completed', {
+      payloadCount: result.payloads?.length ?? 0,
+      provider,
+      sourceUrl: result.sourceUrl,
+      url,
+      warningCount: warnings.length,
+    })
+
+    return result
+  } catch (cause) {
+    logError('Playwright browser extraction failed', {
+      error: getErrorMessage(cause),
+      provider,
+      url,
+    })
+    throw cause
+  }
+}
+
+function detectShareProvider(url: string): ShareProvider {
+  return tryNormalizeShareUrl(url)?.provider ?? 'chatgpt'
+}
+
+async function waitForProviderSignal(page: any, provider: ShareProvider) {
+  const signal =
+    provider === 'gemini'
+      ? () =>
+          Boolean(
+            document.querySelector('chat-app') &&
+              /(?:^|\n)\s*You said(?:\n|$)/i.test(document.body.innerText),
+          )
+      : provider === 'claude'
+        ? () =>
+            Boolean(
+              /Shared by/i.test(document.body.innerText) &&
+                /This is a copy of a chat/i.test(document.body.innerText),
+            )
+      : () => {
           const globalScope = window as unknown as Record<string, unknown>
 
           return Boolean(
@@ -197,57 +204,152 @@ async function extractConversationInServerlessBrowser(
               globalScope.__remixContext ||
               document.querySelector('[data-message-author-role]'),
           )
-        },
-        {
-          timeout: BROWSER_SIGNAL_TIMEOUT_MS,
-        },
-      )
-      .catch(() => undefined)
+        }
 
-    const result = await page.evaluate(() => {
-      const globalScope = window as unknown as Record<string, unknown>
-      const routerData = globalScope.__reactRouterDataRouter as
-        | { state?: { loaderData?: unknown } }
-        | undefined
-      const remixData = globalScope.__remixContext as
-        | { state?: { loaderData?: unknown } }
-        | undefined
-      const staticRouterData = globalScope.__staticRouterHydrationData as
-        | { loaderData?: unknown }
-        | undefined
-
-      return {
-        html: document.documentElement.outerHTML,
-        payloads: [
-          globalScope.__NEXT_DATA__,
-          staticRouterData,
-          staticRouterData?.loaderData,
-          routerData?.state,
-          routerData?.state?.loaderData,
-          remixData,
-          remixData?.state,
-          remixData?.state?.loaderData,
-        ].filter((value) => Boolean(value)),
-        sourceUrl: window.location.href,
-      } satisfies BrowserExtractResult
+  await page
+    .waitForFunction(signal, {
+      timeout: BROWSER_SIGNAL_TIMEOUT_MS,
     })
+    .catch(() => undefined)
+}
 
-    logInfo('Playwright browser extraction completed', {
-      payloadCount: result.payloads?.length ?? 0,
-      sourceUrl: result.sourceUrl,
+async function waitForProviderPayloads(
+  page: any,
+  provider: ShareProvider,
+  url: string,
+): Promise<unknown[]> {
+  switch (provider) {
+    case 'claude':
+      return waitForClaudeSnapshotPayloads(page, url)
+    case 'gemini':
+      return waitForGeminiConversationPayloads(page, url)
+    default:
+      return []
+  }
+}
+
+async function waitForClaudeSnapshotPayloads(
+  page: any,
+  url: string,
+): Promise<unknown[]> {
+  try {
+    const response = await page.waitForResponse(
+      (candidate: any) => isClaudeSnapshotResponseUrl(candidate.url()),
+      {
+        timeout: BROWSER_NAVIGATION_TIMEOUT_MS,
+      },
+    )
+    const responseText = await response.text()
+    const payloads = extractClaudeConversationPayloads(responseText)
+
+    logInfo('Captured Claude snapshot payload', {
+      payloadCount: payloads.length,
+      responseUrl: response.url(),
       url,
     })
 
-    return result
+    return payloads
   } catch (cause) {
-    logError('Playwright browser extraction failed', {
+    logWarn('Claude snapshot payload capture did not complete', {
       error: getErrorMessage(cause),
       url,
     })
-    throw cause
-  } finally {
-    await browser.close().catch(() => undefined)
+    return []
   }
+}
+
+async function waitForGeminiConversationPayloads(
+  page: any,
+  url: string,
+): Promise<unknown[]> {
+  try {
+    const response = await page.waitForResponse(
+      (candidate: any) => isGeminiConversationResponseUrl(candidate.url()),
+      {
+        timeout: BROWSER_NAVIGATION_TIMEOUT_MS,
+      },
+    )
+    const responseText = await response.text()
+    const payloads = extractGeminiConversationPayloads(responseText)
+
+    logInfo('Captured Gemini conversation payload', {
+      payloadCount: payloads.length,
+      responseUrl: response.url(),
+      url,
+    })
+
+    return payloads
+  } catch (cause) {
+    logWarn('Gemini conversation payload capture did not complete', {
+      error: getErrorMessage(cause),
+      url,
+    })
+    return []
+  }
+}
+
+async function maybeAcceptGeminiConsent(
+  page: any,
+  url: string,
+): Promise<string[]> {
+  const acceptAllButton = page.getByRole('button', { name: /accept all/i }).first()
+  const isVisible = await acceptAllButton
+    .isVisible({ timeout: 2_000 })
+    .catch(() => false)
+
+  if (!isVisible) {
+    return []
+  }
+
+  await Promise.allSettled([
+    page.waitForURL(/gemini\.google\.com\/share\//, {
+      timeout: BROWSER_NAVIGATION_TIMEOUT_MS,
+    }),
+    acceptAllButton.click({ timeout: 3_000 }),
+  ])
+
+  await page
+    .waitForLoadState('domcontentloaded', {
+      timeout: BROWSER_NAVIGATION_TIMEOUT_MS,
+    })
+    .catch(() => undefined)
+
+  logInfo('Accepted Gemini consent page', {
+    pageUrl: page.url(),
+    url,
+  })
+
+  return ['Accepted the Gemini consent page in browser fallback.']
+}
+
+async function snapshotPage(page: any): Promise<BrowserExtractResult> {
+  return page.evaluate(() => {
+    const globalScope = window as unknown as Record<string, unknown>
+    const routerData = globalScope.__reactRouterDataRouter as
+      | { state?: { loaderData?: unknown } }
+      | undefined
+    const remixData = globalScope.__remixContext as
+      | { state?: { loaderData?: unknown } }
+      | undefined
+    const staticRouterData = globalScope.__staticRouterHydrationData as
+      | { loaderData?: unknown }
+      | undefined
+
+    return {
+      html: document.documentElement.outerHTML,
+      payloads: [
+        globalScope.__NEXT_DATA__,
+        staticRouterData,
+        staticRouterData?.loaderData,
+        routerData?.state,
+        routerData?.state?.loaderData,
+        remixData,
+        remixData?.state,
+        remixData?.state?.loaderData,
+      ].filter((value) => Boolean(value)),
+      sourceUrl: window.location.href,
+    } satisfies BrowserExtractResult
+  })
 }
 
 async function loadServerlessBrowserRuntime(): Promise<ServerlessBrowserRuntime | null> {

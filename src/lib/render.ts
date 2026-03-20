@@ -12,7 +12,7 @@ export function renderConversationToMarkdown(
     'exportedAt' | 'includeMetadata' | 'includeSystemMessages'
   > = {},
 ): string {
-  const title = cleanText(conversation.title) || 'ChatGPT Conversation'
+  const title = cleanText(conversation.title) || 'Shared Conversation'
   const includeMetadata = options.includeMetadata !== false
   const includeSystemMessages = options.includeSystemMessages === true
   const sections: string[] = [`# ${title}`]

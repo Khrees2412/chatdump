@@ -19,12 +19,12 @@ export const Route = createRootRoute({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'chatdump | Public ChatGPT share to Markdown',
+        title: 'chatdump | Public Share Link to Markdown',
       },
       {
         name: 'description',
         content:
-          'Convert public ChatGPT share URLs into clean, deterministic Markdown you can review, copy, and reuse.',
+          'Convert public share links into clean, deterministic Markdown you can review, copy, and reuse.',
       },
     ],
     links: [
