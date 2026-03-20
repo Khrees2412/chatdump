@@ -143,6 +143,12 @@ async function extractConversation(
       throw cause
     }
 
+    console.warn('[chatdump] Static extraction failed; trying browser fallback', {
+      browserUrl: options.browserUrl,
+      error: cause.message,
+      sourceUrl: options.sourceUrl,
+    })
+
     const fallback = await tryBrowserFallback(
       options.browserUrl,
       options.browserExtractor,
@@ -177,11 +183,16 @@ async function tryBrowserFallback(
   | { status: 'unavailable' }
 > {
   const extractor = browserExtractor ?? extractConversationInBrowser
+  console.info('[chatdump] Browser fallback starting', {
+    extractor: browserExtractor ? 'custom' : 'default',
+    url,
+  })
 
   try {
     const browserResult = await extractor(url)
 
     if (!browserResult) {
+      console.warn('[chatdump] Browser fallback unavailable', { url })
       return { status: 'unavailable' }
     }
 
@@ -196,6 +207,12 @@ async function tryBrowserFallback(
     )
 
     if (conversation) {
+      console.info('[chatdump] Browser fallback succeeded from extracted payloads', {
+        payloadCount: browserResult.payloads?.length ?? 0,
+        sourceUrl: browserResult.sourceUrl,
+        url,
+        warningCount: warnings.length,
+      })
       return {
         result: {
           conversation,
@@ -210,6 +227,12 @@ async function tryBrowserFallback(
         browserResult.html,
         browserResult.sourceUrl,
       )
+
+      console.info('[chatdump] Browser fallback succeeded from browser HTML', {
+        sourceUrl: browserResult.sourceUrl,
+        url,
+        warningCount: warnings.length + extracted.warnings.length,
+      })
 
       return {
         result: {
@@ -228,6 +251,10 @@ async function tryBrowserFallback(
       status: 'failed',
     }
   } catch (cause) {
+    console.error('[chatdump] Browser fallback failed', {
+      error: getFailureMessage(cause),
+      url,
+    })
     return {
       cause,
       status: 'failed',

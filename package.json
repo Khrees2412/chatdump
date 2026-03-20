@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
+    "build:vercel": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium && vite build && node scripts/prepare-vercel-playwright.mjs",
     "start": "node .output/server/index.mjs",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
