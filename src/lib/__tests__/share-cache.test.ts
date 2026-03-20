@@ -7,6 +7,7 @@ import {
 import type { NormalizedConversation } from '../types'
 
 const shareUrl = 'https://chatgpt.com/share/12345678-1234-1234-1234-1234567890ab'
+const geminiShareUrl = 'https://gemini.google.com/share/ee5bab956b9f'
 
 describe('getOrCreateCachedShareConversation', () => {
   const makeConversation = (title: string): NormalizedConversation => ({
@@ -140,6 +141,53 @@ describe('getOrCreateCachedShareConversation', () => {
     expect(first.conversation.title).toBe('Shared result')
     expect(second.conversation.title).toBe('Shared result')
     expect(first.warnings).toEqual([])
+    expect(second.warnings).toEqual([])
+  })
+
+  test('reuses cached Gemini conversations across canonical and short links', async () => {
+    clearShareConversationCache()
+
+    let loaderCalls = 0
+
+    const first = await getOrCreateCachedShareConversation(
+      'https://g.co/gemini/share/ee5bab956b9f?hl=en',
+      async () => {
+        loaderCalls += 1
+
+        return {
+          conversation: {
+            conversationId: 'gemini-cached',
+            createdAt: '2026-03-20T00:00:00.000Z',
+            messages: [],
+            sourceUrl: geminiShareUrl,
+            title: 'Gemini Cached Result',
+          },
+          warnings: [],
+        }
+      },
+    )
+
+    const second = await getOrCreateCachedShareConversation(
+      geminiShareUrl,
+      async () => {
+        loaderCalls += 1
+
+        return {
+          conversation: {
+            conversationId: 'gemini-cached-2',
+            createdAt: '2026-03-20T00:00:00.000Z',
+            messages: [],
+            sourceUrl: geminiShareUrl,
+            title: 'Should not be used',
+          },
+          warnings: ['unexpected'],
+        }
+      },
+    )
+
+    expect(loaderCalls).toBe(1)
+    expect(first.conversation.title).toBe('Gemini Cached Result')
+    expect(second.conversation.title).toBe('Gemini Cached Result')
     expect(second.warnings).toEqual([])
   })
 })

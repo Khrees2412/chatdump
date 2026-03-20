@@ -426,7 +426,7 @@ function Home() {
 
                 <div className="grid gap-3">
                   <h1 className="text-[clamp(2.8rem,6.2vw,5.3rem)] font-bold leading-[0.95] tracking-[-0.07em] max-[720px]:text-[clamp(2.15rem,14vw,3.75rem)] max-[720px]:leading-[0.94] max-[720px]:tracking-[-0.08em]">
-                    Turn a public ChatGPT share into Markdown.
+                    Turn a public share link into Markdown.
                   </h1>
                   <p className="max-w-[36rem] text-[1.02rem] leading-[1.72] text-ink-muted max-[720px]:max-w-none max-[720px]:text-[0.97rem]">
                     Paste a supported share link to generate a clean transcript
@@ -455,7 +455,7 @@ function Home() {
                       'text-[0.78rem] tracking-[0.12em] text-ink-soft',
                     )}
                   >
-                    Public share URL
+                    Public share link
                   </span>
                   <div className="grid min-h-[3.75rem] grid-cols-[auto_minmax(0,1fr)] items-center gap-[0.8rem] rounded-[1.1rem] border border-line-strong bg-paper-inset pl-[0.95rem] pr-[0.4rem] transition-[border-color,box-shadow,transform] duration-[180ms] ease-out focus-within:-translate-y-px focus-within:border-[rgba(155,106,51,0.48)] focus-within:shadow-[0_0_0_4px_var(--focus)] max-[720px]:min-h-[3.45rem] max-[720px]:gap-[0.65rem] max-[720px]:rounded-[1rem] max-[720px]:pl-[0.85rem] max-[720px]:pr-[0.3rem]">
                     <svg aria-hidden="true" className="h-[1.05rem] w-[1.05rem]" viewBox="0 0 24 24">
@@ -469,7 +469,7 @@ function Home() {
                       className="min-h-full min-w-0 bg-transparent py-4 pr-[0.75rem] font-mono text-[0.96rem] text-ink outline-none placeholder:text-ink-soft max-[720px]:py-[0.95rem] max-[720px]:pr-[0.55rem] max-[720px]:text-[0.88rem] max-[720px]:placeholder:text-[0.82rem]"
                       inputMode="url"
                       name="url"
-                      placeholder="chatgpt.com/share/..."
+                      placeholder="https://.../share/..."
                       ref={urlInputRef}
                       required
                       type="url"
@@ -478,8 +478,9 @@ function Home() {
                     />
                   </div>
                   <p className="font-mono text-[0.8rem] leading-[1.6] tracking-[0.02em] text-ink-soft">
-                    Supports `chatgpt.com/share/...` and
-                    `chat.openai.com/share/...`.
+                    Supports `chatgpt.com/share/...`,
+                    `chat.openai.com/share/...`, and
+                    `gemini.google.com/share/...`.
                   </p>
                 </label>
 

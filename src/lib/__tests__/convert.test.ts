@@ -273,7 +273,7 @@ describe('extractConversationFromHtml', () => {
     })
   })
 
-  test('reports when a share URL resolves to a generic ChatGPT page', () => {
+  test('reports when a share URL resolves to a generic page', () => {
     expect(() =>
       extractConversationFromHtml(
         genericShellHtml,
@@ -399,7 +399,7 @@ describe('convertShareUrlToMarkdown', () => {
         },
       ),
     ).rejects.toThrow(
-      'could not extract conversation data from share page: received a generic ChatGPT page instead of a public shared conversation (page title: ChatGPT); install playwright to enable browser fallback',
+      'could not extract conversation data from share page: received a generic page instead of a public shared conversation (page title: ChatGPT); install playwright to enable browser fallback',
     )
   })
 
@@ -427,7 +427,7 @@ describe('convertShareUrlToMarkdown', () => {
           },
         ),
       ).rejects.toThrow(
-        'could not extract conversation data from share page: received a generic ChatGPT page instead of a public shared conversation (page title: ChatGPT); browser fallback was unavailable in this deployment; check Vercel logs for serverless runtime loading errors',
+        'could not extract conversation data from share page: received a generic page instead of a public shared conversation (page title: ChatGPT); browser fallback was unavailable in this deployment; check Vercel logs for serverless runtime loading errors',
       )
     } finally {
       if (previousVercel === undefined) {

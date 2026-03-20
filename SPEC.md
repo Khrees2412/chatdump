@@ -2,15 +2,15 @@
 
 ## 1. Purpose
 
-`chatdump` converts the content of a public ChatGPT share URL into a clean,
+`chatdump` converts the content of a public share URL into a clean,
 deterministic Markdown document.
 
-The tool exists to make shared ChatGPT conversations portable, readable in
+The tool exists to make shared conversations portable, readable in
 plain text, easy to version-control, and suitable for downstream processing.
 
 ## 2. Goal
 
-Given a supported ChatGPT share URL, `chatdump` must:
+Given a supported public share URL, `chatdump` must:
 
 1. Fetch the shared conversation content.
 2. Extract the conversation structure and available metadata.
@@ -22,28 +22,30 @@ Given a supported ChatGPT share URL, `chatdump` must:
 `chatdump` does not need to:
 
 1. Access private or authenticated conversations.
-2. Reconstruct every visual detail of the original ChatGPT UI.
+2. Reconstruct every visual detail of the original chat UI.
 3. Preserve hidden internal metadata that is not visible in the shared page.
 4. Support editing, replaying, or re-uploading the conversation.
-5. Convert arbitrary web pages; the input is specifically a ChatGPT share URL.
+5. Convert arbitrary web pages; the input is specifically a public share URL.
 
 ## 4. Supported Inputs
 
 ### 4.1 URL formats
 
-Initial support targets public ChatGPT share URLs in canonical forms such as:
+Initial support targets public share URLs in canonical forms such as:
 
 - `https://chatgpt.com/share/<id>`
 - `https://chat.openai.com/share/<id>`
+- `https://gemini.google.com/share/<id>`
+- `https://g.co/gemini/share/<id>`
 
-The implementation should also tolerate redirects between supported ChatGPT
+The implementation should also tolerate redirects between supported
 share domains.
 
 ### 4.2 Input contract
 
 The tool accepts exactly one share URL per invocation in the first version.
 
-If the URL is not a supported ChatGPT share URL, the tool must fail with a
+If the URL is not a supported public share URL, the tool must fail with a
 clear error.
 
 ## 5. Output Contract
@@ -57,7 +59,7 @@ The Markdown must be:
 - readable as plain text
 - deterministic for the same source content
 - valid enough to render correctly on common Markdown renderers
-- free of ChatGPT page chrome, scripts, and unrelated HTML
+- free of page chrome, scripts, and unrelated HTML
 
 ### 5.2 Default document structure
 
@@ -271,7 +273,7 @@ Errors must:
 
 Example errors:
 
-- `unsupported share URL: expected a ChatGPT share link`
+- `unsupported share URL: expected a public share link`
 - `failed to fetch share page: HTTP 404`
 - `could not extract conversation data from share page`
 
@@ -316,7 +318,7 @@ Default behavior:
 
 `chatdump` is complete for v1 when all of the following are true:
 
-1. A valid public ChatGPT share URL produces a readable Markdown transcript.
+1. A valid public share URL produces a readable Markdown transcript.
 2. User and assistant turns appear in the correct order.
 3. Code blocks remain fenced and readable.
 4. Links remain intact.
@@ -346,4 +348,4 @@ These can be deferred:
 2. Front matter export formats such as YAML or JSON sidecars.
 3. Alternate outputs such as HTML, PDF, or JSON.
 4. Automatic filename generation from conversation title.
-5. Full fidelity export of every ChatGPT-specific UI artifact.
+5. Full fidelity export of every provider-specific UI artifact.

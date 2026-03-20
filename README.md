@@ -1,10 +1,10 @@
 # chatdump
 
-Convert a public ChatGPT share URL into clean Markdown.
+Convert a public share link into clean Markdown.
 
 Live app: `https://chatdump.vercel.app`
 
-Paste a share link, get back a readable Markdown transcript.
+Paste a public share link, get back a readable Markdown transcript.
 
 It includes:
 
@@ -22,7 +22,7 @@ bun install
 bun run dev
 ```
 
-Open the local app, paste a public share URL, and copy the generated Markdown.
+Open the local app, paste a public share link, and copy the generated Markdown.
 
 ## CLI
 
@@ -50,8 +50,10 @@ Useful options:
 
 - `https://chatgpt.com/share/<id>`
 - `https://chat.openai.com/share/<id>`
+- `https://gemini.google.com/share/<id>`
+- `https://g.co/gemini/share/<id>`
 
-Redirects between supported ChatGPT share domains are handled.
+Redirects between supported share domains are handled.
 
 ## Development
 
@@ -63,5 +65,5 @@ bun run typecheck
 
 ## Notes
 
-- Only public ChatGPT share pages are supported.
+- Only public share pages are supported.
 - Extraction prefers embedded structured data and falls back to DOM/browser extraction when needed.
