@@ -2,7 +2,7 @@
 
 Convert a public share link into clean Markdown.
 
-Live app: `https://chatdump.vercel.app`
+Live app: [https://chatdump.vercel.app](https://chatdump.vercel.app)
 
 Paste a public share link, get back a readable Markdown transcript.
 
