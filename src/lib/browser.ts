@@ -1,28 +1,26 @@
-import { access } from 'node:fs/promises'
-import { constants } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
+import sparticuzChromium from '@sparticuz/chromium'
+import { chromium as playwrightCoreChromium } from 'playwright-core'
 import type { BrowserExtractResult } from './types'
 
 const BROWSER_NAVIGATION_TIMEOUT_MS = 15_000
 const BROWSER_SIGNAL_TIMEOUT_MS = 5_000
-const BROWSER_LAUNCH_ARGS = [
-  '--disable-dev-shm-usage',
-  '--disable-setuid-sandbox',
-  '--no-sandbox',
-]
-const HERMETIC_PLAYWRIGHT_BROWSERS_PATH = '0'
 const require = createRequire(import.meta.url)
 
 export async function extractConversationInBrowser(
   url: string,
 ): Promise<BrowserExtractResult | null> {
-  process.env.PLAYWRIGHT_BROWSERS_PATH ??= HERMETIC_PLAYWRIGHT_BROWSERS_PATH
+  if (isVercelRuntime()) {
+    return extractConversationInServerlessBrowser(url)
+  }
 
   const resolvedPackagePath = resolveModulePath('playwright/package.json')
   logInfo('Playwright fallback invoked', {
-    browsersPath: process.env.PLAYWRIGHT_BROWSERS_PATH,
     node: process.version,
     playwrightPackagePath: resolvedPackagePath,
+    runtime: 'local-playwright',
     url,
     vercelEnv: process.env.VERCEL_ENV ?? null,
   })
@@ -38,17 +36,117 @@ export async function extractConversationInBrowser(
   }
 
   const executablePath = getExecutablePath(playwright)
-  const executablePresent = executablePath ? await fileExists(executablePath) : false
 
   logInfo('Playwright module loaded', {
-    executablePath,
-    executablePresent,
+    executablePath: getSafeExecutablePath(executablePath),
     url,
   })
 
   const browser = await playwright.chromium.launch({
-    args: BROWSER_LAUNCH_ARGS,
-    executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH || undefined,
+    headless: true,
+  })
+
+  try {
+    logInfo('Playwright browser launched', { url })
+
+    const page = await browser.newPage({
+      userAgent: 'chatdump/0.1 (+browser fallback)',
+    })
+
+    await page.goto(url, {
+      timeout: BROWSER_NAVIGATION_TIMEOUT_MS,
+      waitUntil: 'domcontentloaded',
+    })
+
+    logInfo('Playwright page loaded', {
+      pageUrl: page.url(),
+      title: await page.title().catch(() => ''),
+      url,
+    })
+
+    await page
+      .waitForFunction(
+        () => {
+          const globalScope = window as unknown as Record<string, unknown>
+
+          return Boolean(
+            globalScope.__NEXT_DATA__ ||
+              globalScope.__staticRouterHydrationData ||
+              (globalScope.__reactRouterDataRouter as { state?: unknown } | undefined)?.state ||
+              globalScope.__remixContext ||
+              document.querySelector('[data-message-author-role]'),
+          )
+        },
+        {
+          timeout: BROWSER_SIGNAL_TIMEOUT_MS,
+        },
+      )
+      .catch(() => undefined)
+
+    const result = await page.evaluate(() => {
+      const globalScope = window as unknown as Record<string, unknown>
+      const routerData = globalScope.__reactRouterDataRouter as
+        | { state?: { loaderData?: unknown } }
+        | undefined
+      const remixData = globalScope.__remixContext as
+        | { state?: { loaderData?: unknown } }
+        | undefined
+      const staticRouterData = globalScope.__staticRouterHydrationData as
+        | { loaderData?: unknown }
+        | undefined
+
+      return {
+        html: document.documentElement.outerHTML,
+        payloads: [
+          globalScope.__NEXT_DATA__,
+          staticRouterData,
+          staticRouterData?.loaderData,
+          routerData?.state,
+          routerData?.state?.loaderData,
+          remixData,
+          remixData?.state,
+          remixData?.state?.loaderData,
+        ].filter((value) => Boolean(value)),
+        sourceUrl: window.location.href,
+      } satisfies BrowserExtractResult
+    })
+
+    logInfo('Playwright browser extraction completed', {
+      payloadCount: result.payloads?.length ?? 0,
+      sourceUrl: result.sourceUrl,
+      url,
+    })
+
+    return result
+  } catch (cause) {
+    logError('Playwright browser extraction failed', {
+      error: getErrorMessage(cause),
+      url,
+    })
+    throw cause
+  } finally {
+    await browser.close().catch(() => undefined)
+  }
+}
+
+async function extractConversationInServerlessBrowser(
+  url: string,
+): Promise<BrowserExtractResult | null> {
+  const chromiumAssetDir = resolveChromiumAssetDir()
+  const executablePath = await sparticuzChromium.executablePath(chromiumAssetDir)
+
+  logInfo('Playwright fallback invoked', {
+    chromiumAssetDir,
+    executablePath: getSafeExecutablePath(executablePath),
+    node: process.version,
+    runtime: 'vercel-serverless',
+    url,
+    vercelEnv: process.env.VERCEL_ENV ?? null,
+  })
+
+  const browser = await playwrightCoreChromium.launch({
+    args: sparticuzChromium.args,
+    executablePath,
     headless: true,
   })
 
@@ -168,15 +266,6 @@ function getExecutablePath(playwright: { chromium?: any }): string | null {
   }
 }
 
-async function fileExists(path: string): Promise<boolean> {
-  try {
-    await access(path, constants.F_OK)
-    return true
-  } catch {
-    return false
-  }
-}
-
 function resolveModulePath(specifier: string): string | null {
   try {
     return require.resolve(specifier)
@@ -191,6 +280,27 @@ function getErrorMessage(cause: unknown): string {
   }
 
   return String(cause)
+}
+
+function getSafeExecutablePath(path: string | null): string | null {
+  if (!path) {
+    return null
+  }
+
+  return path.length > 140 ? `${path.slice(0, 137)}...` : path
+}
+
+function isVercelRuntime(): boolean {
+  return Boolean(process.env.VERCEL || process.env.VERCEL_ENV)
+}
+
+function resolveChromiumAssetDir(): string | undefined {
+  const candidates = [
+    fileURLToPath(new URL('../bin', import.meta.url)),
+    fileURLToPath(new URL('../../bin', import.meta.url)),
+  ]
+
+  return candidates.find((candidate) => existsSync(candidate))
 }
 
 function logInfo(message: string, details: Record<string, unknown>) {

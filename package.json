@@ -6,8 +6,7 @@
   "packageManager": "bun@1.1.43",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
-    "build:vercel": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium && vite build && node scripts/prepare-vercel-playwright.mjs",
+    "build": "vite build && node scripts/copy-serverless-chromium-assets.mjs",
     "start": "node .output/server/index.mjs",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
@@ -17,10 +16,12 @@
     "chatdump": "./src/cli.ts"
   },
   "dependencies": {
+    "@sparticuz/chromium": "latest",
     "@tanstack/react-router": "latest",
     "@tanstack/react-start": "latest",
     "cheerio": "latest",
-    "playwright": "^1.58.2",
+    "chromium-bidi": "latest",
+    "playwright-core": "latest",
     "react": "latest",
     "react-dom": "latest",
     "react-markdown": "^10.1.0",
@@ -34,6 +35,7 @@
     "@vitejs/plugin-react": "latest",
     "bun-types": "latest",
     "nitro": "npm:nitro-nightly@latest",
+    "playwright": "^1.58.2",
     "tailwindcss": "^4.2.2",
     "typescript": "latest",
     "vite": "latest"
