@@ -443,6 +443,38 @@ describe('convertShareUrlToMarkdown', () => {
       }
     }
   })
+
+  test('can bypass the share cache for live probes', async () => {
+    let fetchCalls = 0
+
+    const fetchImpl = async () => {
+      fetchCalls += 1
+
+      return new Response(structuredHtml, {
+        headers: {
+          'content-type': 'text/html',
+        },
+        status: 200,
+      })
+    }
+
+    await convertShareUrlToMarkdown(
+      'https://chatgpt.com/share/12345678-1234-1234-1234-1234567890ab',
+      {
+        fetchImpl,
+      },
+    )
+
+    await convertShareUrlToMarkdown(
+      'https://chatgpt.com/share/12345678-1234-1234-1234-1234567890ab',
+      {
+        disableCache: true,
+        fetchImpl,
+      },
+    )
+
+    expect(fetchCalls).toBe(2)
+  })
 })
 
 describe('renderConversationToMarkdown', () => {

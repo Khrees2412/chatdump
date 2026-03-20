@@ -64,6 +64,33 @@ bun run test
 bun run typecheck
 ```
 
+## Private Provider Health
+
+There is a private health endpoint at `/api/private/provider-health`.
+
+It is disabled unless `CHATDUMP_HEALTH_TOKEN` is set. When the token is missing, the endpoint returns `404`.
+
+Environment variables:
+
+- `CHATDUMP_HEALTH_TOKEN`: bearer token required to access the endpoint
+- `CHATDUMP_HEALTH_CHATGPT_URL`: public ChatGPT share URL used for the probe
+- `CHATDUMP_HEALTH_GEMINI_URL`: public Gemini share URL used for the probe
+- `CHATDUMP_HEALTH_CLAUDE_URL`: public Claude share URL used for the probe
+- `CHATDUMP_HEALTH_CACHE_TTL_MS`: optional in-memory probe cache TTL, defaults to 5 minutes
+
+Example:
+
+```bash
+curl \
+  -H "Authorization: Bearer $CHATDUMP_HEALTH_TOKEN" \
+  "https://chatdump.vercel.app/api/private/provider-health?providers=chatgpt,gemini,claude"
+```
+
+Useful query parameters:
+
+- `providers=chatgpt,gemini,claude`: limit the check to one or more providers
+- `fresh=1`: bypass the short-lived health cache and run live probes
+
 ## Notes
 
 - Only public share pages are supported.

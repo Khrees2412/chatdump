@@ -51,8 +51,7 @@ export async function convertShareUrlToMarkdown(
 ): Promise<ConvertResult> {
   const { url } = normalizeShareUrl(rawUrl)
   const fetchImpl = options.fetchImpl ?? fetch
-
-  const cached = await getOrCreateCachedShareConversation(url.toString(), async () => {
+  const loader = async () => {
     const { conversation, warnings } = await loadShareConversation(url, {
       browserExtractor: options.browserExtractor,
       enableBrowserFallback: options.enableBrowserFallback,
@@ -63,7 +62,10 @@ export async function convertShareUrlToMarkdown(
       conversation,
       warnings,
     }
-  })
+  }
+  const cached = options.disableCache
+    ? await loader()
+    : await getOrCreateCachedShareConversation(url.toString(), loader)
 
   const conversation = cached.conversation
 
