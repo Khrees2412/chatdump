@@ -93,15 +93,28 @@ const convertShare = createServerFn({ method: 'POST' })
     url: data.url.trim(),
   }))
   .handler(async ({ data }) => {
-    const { convertShareUrlToMarkdown } = await import('../lib/convert')
-    const exportedAt = new Date()
+    const [
+      { convertShareUrlToMarkdown },
+      { getOrCreateCachedShareMarkdown },
+      { validateShareUrl },
+    ] = await Promise.all([
+      import('../lib/convert'),
+      import('../lib/share-cache'),
+      import('../lib/url'),
+    ])
+    const normalizedUrl = validateShareUrl(data.url).toString()
 
-    const result = await convertShareUrlToMarkdown(data.url, { exportedAt })
+    return await getOrCreateCachedShareMarkdown(normalizedUrl, async () => {
+      const exportedAt = new Date()
+      const result = await convertShareUrlToMarkdown(normalizedUrl, {
+        exportedAt,
+      })
 
-    return {
-      markdown: result.markdown,
-      warnings: result.warnings,
-    }
+      return {
+        markdown: result.markdown,
+        warnings: result.warnings,
+      }
+    })
   })
 
 export const Route = createFileRoute('/')({
@@ -543,19 +556,25 @@ function Home() {
                     ) : null}
                   </div>
 
-                  <div className="grid gap-2 min-[721px]:flex min-[721px]:flex-wrap min-[721px]:justify-end">
-                    <Button onClick={handleEditUrl}>
+                  <div className="grid grid-cols-3 gap-2 min-[721px]:flex min-[721px]:flex-wrap min-[721px]:justify-end">
+                    <Button
+                      aria-label="Edit URL"
+                      className="max-[720px]:min-h-11 max-[720px]:w-11 max-[720px]:justify-center max-[720px]:gap-0 max-[720px]:px-0 max-[720px]:pl-0"
+                      onClick={handleEditUrl}
+                    >
                       <svg aria-hidden="true" className="h-[1.05rem] w-[1.05rem]" viewBox="0 0 24 24">
                         <path
                           d="M19 12H5M11 6l-6 6 6 6"
                           className="fill-none stroke-current stroke-[1.8] stroke-linecap-round stroke-linejoin-round"
                         />
                       </svg>
-                      <span>Edit URL</span>
+                      <span className="hidden min-[721px]:inline">Edit URL</span>
                     </Button>
 
                     <Button
+                      aria-label={previewLabel}
                       aria-pressed={isRenderedPreview}
+                      className="max-[720px]:min-h-11 max-[720px]:w-11 max-[720px]:justify-center max-[720px]:gap-0 max-[720px]:px-0 max-[720px]:pl-0"
                       pressed={isRenderedPreview}
                       onClick={handlePreview}
                     >
@@ -565,17 +584,21 @@ function Home() {
                           className="fill-none stroke-current stroke-[1.8] stroke-linecap-round stroke-linejoin-round"
                         />
                       </svg>
-                      <span>{previewLabel}</span>
+                      <span className="hidden min-[721px]:inline">{previewLabel}</span>
                     </Button>
 
-                    <Button onClick={handleCopy}>
+                    <Button
+                      aria-label={copyLabel}
+                      className="max-[720px]:min-h-11 max-[720px]:w-11 max-[720px]:justify-center max-[720px]:gap-0 max-[720px]:px-0 max-[720px]:pl-0"
+                      onClick={handleCopy}
+                    >
                       <svg aria-hidden="true" className="h-[1.05rem] w-[1.05rem]" viewBox="0 0 24 24">
                         <path
                           d="M9 9h10v12H9zM5 3h10v4H9v10H5z"
                           className="fill-none stroke-current stroke-[1.8] stroke-linecap-round stroke-linejoin-round"
                         />
                       </svg>
-                      <span>{copyLabel}</span>
+                      <span className="hidden min-[721px]:inline">{copyLabel}</span>
                     </Button>
                   </div>
                 </div>
