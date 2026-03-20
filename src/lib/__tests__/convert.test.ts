@@ -1,9 +1,10 @@
-import { describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 import {
   convertShareUrlToMarkdown,
   extractConversationFromHtml,
 } from '../extract'
 import { renderConversationToMarkdown } from '../render'
+import { clearShareConversationCache } from '../share-cache'
 
 const structuredHtml = `
 <!doctype html>
@@ -310,6 +311,10 @@ describe('extractConversationFromHtml', () => {
 })
 
 describe('convertShareUrlToMarkdown', () => {
+  beforeEach(() => {
+    clearShareConversationCache()
+  })
+
   test('produces deterministic markdown output', async () => {
     const result = await convertShareUrlToMarkdown(
       'https://chatgpt.com/share/12345678-1234-1234-1234-1234567890ab',

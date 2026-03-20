@@ -93,28 +93,15 @@ const convertShare = createServerFn({ method: 'POST' })
     url: data.url.trim(),
   }))
   .handler(async ({ data }) => {
-    const [
-      { convertShareUrlToMarkdown },
-      { getOrCreateCachedShareMarkdown },
-      { validateShareUrl },
-    ] = await Promise.all([
-      import('../lib/convert'),
-      import('../lib/share-cache'),
-      import('../lib/url'),
-    ])
-    const normalizedUrl = validateShareUrl(data.url).toString()
+    const { convertShareUrlToMarkdown } = await import('../lib/convert')
+    const exportedAt = new Date()
 
-    return await getOrCreateCachedShareMarkdown(normalizedUrl, async () => {
-      const exportedAt = new Date()
-      const result = await convertShareUrlToMarkdown(normalizedUrl, {
-        exportedAt,
-      })
+    const result = await convertShareUrlToMarkdown(data.url, { exportedAt })
 
-      return {
-        markdown: result.markdown,
-        warnings: result.warnings,
-      }
-    })
+    return {
+      markdown: result.markdown,
+      warnings: result.warnings,
+    }
   })
 
 export const Route = createFileRoute('/')({
@@ -204,6 +191,14 @@ function Home() {
         },
       })
         .then((result) => {
+          if (
+            !result ||
+            typeof result.markdown !== 'string' ||
+            !Array.isArray(result.warnings)
+          ) {
+            throw new Error('Received an invalid response while loading this share URL')
+          }
+
           setMarkdown(result.markdown)
           setOutputMode('markdown')
           setWarnings(result.warnings)

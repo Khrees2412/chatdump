@@ -20,6 +20,7 @@ import type {
   TableBlock,
   TextBlock,
 } from './types'
+import { getOrCreateCachedShareConversation } from './share-cache'
 import { validateShareUrl } from './url'
 
 const BLOCK_TAGS = new Set([
@@ -46,13 +47,23 @@ export async function convertShareUrlToMarkdown(
 ): Promise<ConvertResult> {
   const url = validateShareUrl(rawUrl)
   const fetchImpl = options.fetchImpl ?? fetch
-  const { finalUrl, html } = await fetchSharePage(url, fetchImpl)
-  const { conversation, warnings } = await extractConversation(html, {
-    browserExtractor: options.browserExtractor,
-    browserUrl: url.toString(),
-    enableBrowserFallback: options.enableBrowserFallback,
-    sourceUrl: finalUrl,
+
+  const cached = await getOrCreateCachedShareConversation(url.toString(), async () => {
+    const { finalUrl, html } = await fetchSharePage(url, fetchImpl)
+    const { conversation, warnings } = await extractConversation(html, {
+      browserExtractor: options.browserExtractor,
+      browserUrl: url.toString(),
+      enableBrowserFallback: options.enableBrowserFallback,
+      sourceUrl: finalUrl,
+    })
+
+    return {
+      conversation,
+      warnings,
+    }
   })
+
+  const conversation = cached.conversation
 
   if (options.title?.trim()) {
     conversation.title = options.title.trim()
@@ -67,7 +78,7 @@ export async function convertShareUrlToMarkdown(
   return {
     conversation,
     markdown,
-    warnings,
+    warnings: cached.warnings,
   }
 }
 

@@ -1,30 +1,31 @@
 import { validateShareUrl } from './url'
+import type { NormalizedConversation } from './types'
 
-export interface CachedShareMarkdown {
-  markdown: string
+export interface CachedShareConversation {
+  conversation: NormalizedConversation
   warnings: string[]
 }
 
 const MAX_CACHE_ENTRIES = 200
 export const SHARE_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 
-type CacheEntry = CachedShareMarkdown & {
+type CacheEntry = CachedShareConversation & {
   expiresAt: number
 }
 
-const shareMarkdownCache = new Map<string, CacheEntry>()
-const inFlightShareRequests = new Map<string, Promise<CachedShareMarkdown>>()
+const shareConversationCache = new Map<string, CacheEntry>()
+const inFlightShareRequests = new Map<string, Promise<CachedShareConversation>>()
 
-export async function getOrCreateCachedShareMarkdown(
+export async function getOrCreateCachedShareConversation(
   rawUrl: string,
-  loader: () => Promise<CachedShareMarkdown>,
+  loader: () => Promise<CachedShareConversation>,
   options: {
     now?: () => number
   } = {},
-): Promise<CachedShareMarkdown> {
+): Promise<CachedShareConversation> {
   const now = options.now ?? Date.now
   const cacheKey = getShareCacheKey(rawUrl)
-  const cached = getCachedShareMarkdownByKey(cacheKey, now())
+  const cached = getCachedShareConversationByKey(cacheKey, now())
 
   if (cached) {
     return cached
@@ -33,13 +34,13 @@ export async function getOrCreateCachedShareMarkdown(
   const inFlightRequest = inFlightShareRequests.get(cacheKey)
 
   if (inFlightRequest) {
-    return inFlightRequest.then(cloneCachedShareMarkdown)
+    return inFlightRequest.then(cloneCachedShareConversation)
   }
 
   const pendingRequest = loader()
     .then((result) => {
-      setCachedShareMarkdownByKey(cacheKey, result, now())
-      return cloneCachedShareMarkdown(result)
+      setCachedShareConversationByKey(cacheKey, result, now())
+      return cloneCachedShareConversation(result)
     })
     .finally(() => {
       inFlightShareRequests.delete(cacheKey)
@@ -47,11 +48,11 @@ export async function getOrCreateCachedShareMarkdown(
 
   inFlightShareRequests.set(cacheKey, pendingRequest)
 
-  return pendingRequest.then(cloneCachedShareMarkdown)
+  return pendingRequest.then(cloneCachedShareConversation)
 }
 
-export function clearShareMarkdownCache() {
-  shareMarkdownCache.clear()
+export function clearShareConversationCache() {
+  shareConversationCache.clear()
   inFlightShareRequests.clear()
 }
 
@@ -59,55 +60,65 @@ function getShareCacheKey(rawUrl: string): string {
   return validateShareUrl(rawUrl).toString()
 }
 
-function getCachedShareMarkdownByKey(
+function getCachedShareConversationByKey(
   cacheKey: string,
   now: number,
-): CachedShareMarkdown | null {
+): CachedShareConversation | null {
   pruneExpiredEntries(now)
 
-  const cachedEntry = shareMarkdownCache.get(cacheKey)
+  const cachedEntry = shareConversationCache.get(cacheKey)
 
   if (!cachedEntry) {
     return null
   }
 
-  return cloneCachedShareMarkdown(cachedEntry)
+  return cloneCachedShareConversation(cachedEntry)
 }
 
-function setCachedShareMarkdownByKey(
+function setCachedShareConversationByKey(
   cacheKey: string,
-  result: CachedShareMarkdown,
+  result: CachedShareConversation,
   now: number,
 ) {
-  shareMarkdownCache.set(cacheKey, {
-    ...cloneCachedShareMarkdown(result),
+  shareConversationCache.set(cacheKey, {
+    ...cloneCachedShareConversation(result),
     expiresAt: now + SHARE_CACHE_TTL_MS,
   })
 
-  while (shareMarkdownCache.size > MAX_CACHE_ENTRIES) {
-    const oldestKey = shareMarkdownCache.keys().next().value
+  while (shareConversationCache.size > MAX_CACHE_ENTRIES) {
+    const oldestKey = shareConversationCache.keys().next().value
 
     if (!oldestKey) {
       break
     }
 
-    shareMarkdownCache.delete(oldestKey)
+    shareConversationCache.delete(oldestKey)
   }
 }
 
 function pruneExpiredEntries(now: number) {
-  for (const [cacheKey, cachedEntry] of shareMarkdownCache.entries()) {
+  for (const [cacheKey, cachedEntry] of shareConversationCache.entries()) {
     if (cachedEntry.expiresAt <= now) {
-      shareMarkdownCache.delete(cacheKey)
+      shareConversationCache.delete(cacheKey)
     }
   }
 }
 
-function cloneCachedShareMarkdown(
-  result: CachedShareMarkdown,
-): CachedShareMarkdown {
+function cloneCachedShareConversation(
+  result: CachedShareConversation,
+): CachedShareConversation {
   return {
-    markdown: result.markdown,
+    conversation: cloneConversation(result.conversation),
     warnings: [...result.warnings],
   }
+}
+
+function cloneConversation(
+  conversation: NormalizedConversation,
+): NormalizedConversation {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(conversation)
+  }
+
+  return JSON.parse(JSON.stringify(conversation))
 }
