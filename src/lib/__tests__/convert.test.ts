@@ -402,6 +402,47 @@ describe('convertShareUrlToMarkdown', () => {
       'could not extract conversation data from share page: received a generic ChatGPT page instead of a public shared conversation (page title: ChatGPT); install playwright to enable browser fallback',
     )
   })
+
+  test('reports a deployment-specific browser fallback error on Vercel', async () => {
+    const previousVercel = process.env.VERCEL
+    const previousVercelEnv = process.env.VERCEL_ENV
+
+    process.env.VERCEL = '1'
+    delete process.env.VERCEL_ENV
+
+    try {
+      await expect(
+        convertShareUrlToMarkdown(
+          'https://chatgpt.com/share/12345678-1234-1234-1234-1234567890ab',
+          {
+            browserExtractor: async () => null,
+            enableBrowserFallback: true,
+            fetchImpl: async () =>
+              new Response(genericShellHtml, {
+                headers: {
+                  'content-type': 'text/html',
+                },
+                status: 200,
+              }),
+          },
+        ),
+      ).rejects.toThrow(
+        'could not extract conversation data from share page: received a generic ChatGPT page instead of a public shared conversation (page title: ChatGPT); browser fallback was unavailable in this deployment; check Vercel logs for serverless runtime loading errors',
+      )
+    } finally {
+      if (previousVercel === undefined) {
+        delete process.env.VERCEL
+      } else {
+        process.env.VERCEL = previousVercel
+      }
+
+      if (previousVercelEnv === undefined) {
+        delete process.env.VERCEL_ENV
+      } else {
+        process.env.VERCEL_ENV = previousVercelEnv
+      }
+    }
+  })
 })
 
 describe('renderConversationToMarkdown', () => {

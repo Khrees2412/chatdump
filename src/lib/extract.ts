@@ -160,7 +160,7 @@ async function extractConversation(
       case 'unavailable':
         throw new ChatdumpError(
           'EXTRACT_FAILED',
-          `${cause.message}; install playwright to enable browser fallback`,
+          `${cause.message}; ${getBrowserFallbackUnavailableMessage()}`,
         )
       case 'failed':
         throw new ChatdumpError(
@@ -260,6 +260,14 @@ async function tryBrowserFallback(
       status: 'failed',
     }
   }
+}
+
+function getBrowserFallbackUnavailableMessage(): string {
+  if (process.env.VERCEL || process.env.VERCEL_ENV) {
+    return 'browser fallback was unavailable in this deployment; check Vercel logs for serverless runtime loading errors'
+  }
+
+  return 'install playwright to enable browser fallback'
 }
 
 function getFailureMessage(cause: unknown): string {
