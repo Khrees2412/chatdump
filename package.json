@@ -24,11 +24,13 @@
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.2.2",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@vitejs/plugin-react": "latest",
     "bun-types": "latest",
+    "tailwindcss": "^4.2.2",
     "typescript": "latest",
     "vite": "latest"
   }

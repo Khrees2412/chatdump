@@ -14,7 +14,7 @@ export function renderConversationToMarkdown(
 ): string {
   const title = cleanText(conversation.title) || 'ChatGPT Conversation'
   const includeMetadata = options.includeMetadata !== false
-  const includeSystemMessages = options.includeSystemMessages !== false
+  const includeSystemMessages = options.includeSystemMessages === true
   const sections: string[] = [`# ${title}`]
 
   if (includeMetadata) {

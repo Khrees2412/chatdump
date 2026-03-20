@@ -74,13 +74,13 @@ export interface NormalizedConversation {
 }
 
 export interface ConvertOptions {
-  browserExtractor?: BrowserExtractor
-  enableBrowserFallback?: boolean
-  exportedAt?: Date
-  fetchImpl?: FetchImpl
-  includeMetadata?: boolean
-  includeSystemMessages?: boolean
-  title?: string
+    browserExtractor?: BrowserExtractor
+    enableBrowserFallback?: boolean
+    exportedAt?: Date
+    fetchImpl?: FetchImpl
+    includeMetadata?: boolean
+    includeSystemMessages?: boolean
+    title?: string
 }
 
 export interface ConvertResult {

@@ -6,14 +6,14 @@
 >
   <title id="favicon-title">chatdump favicon</title>
   <desc id="favicon-desc">
-    A warm paper tile containing the chatdump logo mark.
+    A warm paper tile containing the chatdump chat-document symbol.
   </desc>
   <defs>
-    <linearGradient id="chatdump-tile" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+    <linearGradient id="favicon-tile" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#FCF8F1" />
       <stop offset="1" stop-color="#EEE5D9" />
     </linearGradient>
-    <linearGradient id="favicon-stream" x1="18" y1="29" x2="50" y2="34" gradientUnits="userSpaceOnUse">
+    <linearGradient id="favicon-stream" x1="20" y1="50" x2="45" y2="25" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#BC8442" />
       <stop offset="1" stop-color="#31433A" />
     </linearGradient>
@@ -24,30 +24,35 @@
     width="54"
     height="54"
     rx="16"
-    fill="url(#chatdump-tile)"
+    fill="url(#favicon-tile)"
     stroke="#161310"
     stroke-opacity="0.12"
   />
-  <g transform="translate(2 2)" fill="none" stroke="#161310" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="translate(1 1)">
     <path
-      d="M33 13h10l8 8v23a6 6 0 0 1-6 6H31a6 6 0 0 1-6-6V19a6 6 0 0 1 6-6Z"
+      d="M22 12h17.5L50 22.5V44a8 8 0 0 1-8 8H27.4L16 57l3.3-10A8 8 0 0 1 14 39.5V20a8 8 0 0 1 8-8Z"
       fill="#FBF8F3"
-      stroke-width="2.6"
+      stroke="#161310"
+      stroke-linejoin="round"
+      stroke-width="2.7"
     />
-    <path d="M43 13v8h8" stroke-width="2.6" />
     <path
-      d="M17.4 19.7h7c6.4 0 11.5 4.8 11.5 10.8s-5.1 10.8-11.5 10.8H20l-6.8 3.4 2.4-5.9a10.2 10.2 0 0 1-5.1-8.4c0-6 5.2-10.8 11.5-10.8Z"
-      fill="#FBF8F3"
-      stroke-width="2.6"
+      d="M39.5 12v8.1a2.4 2.4 0 0 0 2.4 2.4H50"
+      fill="none"
+      stroke="#161310"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2.7"
     />
-    <path d="M33.5 27h7.7" stroke="#BC8442" stroke-width="2.35" />
-    <path d="M33.5 32.2h10.3" stroke="#31433A" stroke-width="2.35" />
-    <path d="M33.5 37.4h10.3" stroke="#31433A" stroke-width="2.35" />
-    <path d="M33.5 42.6h6.8" stroke="#31433A" stroke-width="2.35" />
     <path
-      d="M17.7 33.5c4.6-4.8 8.9-6.9 13.2-6.9 7.1 0 9.6 5.9 14.2 5.9H51"
+      d="M19.3 49c3.4-7 7.8-13.1 13.8-17.8 3.7-2.9 7.9-5 12.5-6.2"
+      fill="none"
       stroke="url(#favicon-stream)"
-      stroke-width="4.35"
+      stroke-linecap="round"
+      stroke-width="4.9"
     />
+    <rect x="29.5" y="26.5" width="12.2" height="2.4" rx="1.2" fill="#BC8442" />
+    <rect x="29.5" y="32.3" width="14.2" height="2.4" rx="1.2" fill="#31433A" />
+    <rect x="29.5" y="38.1" width="11.2" height="2.4" rx="1.2" fill="#31433A" />
   </g>
 </svg>

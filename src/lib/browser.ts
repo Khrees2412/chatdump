@@ -1,6 +1,5 @@
 import type { BrowserExtractResult } from './types'
 
-const BROWSER_IDLE_TIMEOUT_MS = 3_000
 const BROWSER_NAVIGATION_TIMEOUT_MS = 15_000
 const BROWSER_SIGNAL_TIMEOUT_MS = 5_000
 
@@ -42,12 +41,6 @@ export async function extractConversationInBrowser(
           timeout: BROWSER_SIGNAL_TIMEOUT_MS,
         },
       )
-      .catch(() => undefined)
-
-    await page
-      .waitForLoadState('networkidle', {
-        timeout: BROWSER_IDLE_TIMEOUT_MS,
-      })
       .catch(() => undefined)
 
     return await page.evaluate(() => {

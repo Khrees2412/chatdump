@@ -174,10 +174,7 @@ async function tryBrowserFallback(
       return { status: 'unavailable' }
     }
 
-    const warnings = [
-      'Fell back to browser extraction; page scripts were executed.',
-      ...(browserResult.warnings ?? []),
-    ]
+    const warnings = [...(browserResult.warnings ?? [])]
     const pageTitle = browserResult.html
       ? extractPageTitle(load(browserResult.html))
       : 'ChatGPT Conversation'
@@ -330,11 +327,17 @@ function extractStructuredConversation(
   sourceUrl: string,
 ): NormalizedConversation | null {
   const pageTitle = extractPageTitle($)
-  return selectBestConversationFromPayloads(
-    collectStructuredPayloads($),
+  const targetedConversation = selectBestConversationFromPayloads(
+    collectFastStructuredPayloads($),
     sourceUrl,
     pageTitle,
   )
+
+  if (targetedConversation) {
+    return targetedConversation
+  }
+
+  return selectBestConversationFromPayloads(collectStructuredPayloads($), sourceUrl, pageTitle)
 }
 
 function selectBestConversationFromPayloads(
@@ -342,35 +345,92 @@ function selectBestConversationFromPayloads(
   sourceUrl: string,
   pageTitle: string,
 ): NormalizedConversation | null {
+  const preferred = selectBestConversationFromCandidates(
+    payloads.flatMap((payload) => findKnownConversationCandidates(payload)),
+    sourceUrl,
+    pageTitle,
+  )
+
+  if (preferred) {
+    return preferred
+  }
+
+  return selectBestConversationFromCandidates(
+    payloads.flatMap((payload) => findConversationCandidates(payload)),
+    sourceUrl,
+    pageTitle,
+  )
+}
+
+function selectBestConversationFromCandidates(
+  candidates: unknown[],
+  sourceUrl: string,
+  pageTitle: string,
+): NormalizedConversation | null {
   let best: { conversation: NormalizedConversation; score: number } | null = null
 
-  for (const payload of payloads) {
-    for (const candidate of findConversationCandidates(payload)) {
-      const conversation = normalizeConversationCandidate(
-        candidate,
-        sourceUrl,
-        pageTitle,
-      )
+  for (const candidate of candidates) {
+    const conversation = normalizeConversationCandidate(
+      candidate,
+      sourceUrl,
+      pageTitle,
+    )
 
-      if (!conversation || conversation.messages.length === 0) {
-        continue
-      }
+    if (!conversation || conversation.messages.length === 0) {
+      continue
+    }
 
-      const score =
-        conversation.messages.length * 10 +
-        (conversation.conversationId ? 4 : 0) +
-        (conversation.title !== 'ChatGPT Conversation' ? 2 : 0)
+    const score =
+      conversation.messages.length * 10 +
+      (conversation.conversationId ? 4 : 0) +
+      (conversation.title !== 'ChatGPT Conversation' ? 2 : 0)
 
-      if (!best || score > best.score) {
-        best = {
-          conversation,
-          score,
-        }
+    if (!best || score > best.score) {
+      best = {
+        conversation,
+        score,
       }
     }
   }
 
   return best?.conversation ?? null
+}
+
+function collectFastStructuredPayloads($: CheerioAPI): unknown[] {
+  const payloads: unknown[] = []
+  const nextDataText = $('#__NEXT_DATA__').first().html()?.trim() ?? ''
+
+  if (nextDataText) {
+    const parsed = safeJsonParse(nextDataText)
+
+    if (parsed !== null) {
+      payloads.push(parsed)
+    }
+  }
+
+  $('script').each((_, element) => {
+    const script = $(element)
+
+    if (script.attr('id') === '__NEXT_DATA__') {
+      return
+    }
+
+    const text = script.html()?.trim() ?? ''
+
+    if (!looksLikeHydrationBootstrap(text)) {
+      return
+    }
+
+    for (const candidate of extractJsonParsePayloads(text)) {
+      const parsed = safeJsonParse(candidate)
+
+      if (parsed !== null) {
+        payloads.push(parsed)
+      }
+    }
+  })
+
+  return payloads
 }
 
 function collectStructuredPayloads($: CheerioAPI): unknown[] {
@@ -422,6 +482,14 @@ function collectStructuredPayloads($: CheerioAPI): unknown[] {
 
 function looksLikeJson(text: string): boolean {
   return text.startsWith('{') || text.startsWith('[')
+}
+
+function looksLikeHydrationBootstrap(text: string): boolean {
+  return (
+    text.includes('__staticRouterHydrationData') ||
+    text.includes('__reactRouterDataRouter') ||
+    text.includes('__remixContext')
+  )
 }
 
 function hasStructuredPayloadHint(text: string): boolean {
@@ -688,6 +756,59 @@ function extractBalancedJsonObjects(text: string): string[] {
   }
 
   return results
+}
+
+function findKnownConversationCandidates(root: unknown): unknown[] {
+  const candidates: unknown[] = []
+  const seen = new Set<unknown>()
+
+  function add(value: unknown) {
+    if (!value || typeof value !== 'object' || Array.isArray(value) || seen.has(value)) {
+      return
+    }
+
+    seen.add(value)
+    candidates.push(value)
+  }
+
+  const record = asRecord(root)
+
+  if (!record) {
+    return candidates
+  }
+
+  add(record.shareData)
+  add(record.conversation)
+  add(asRecord(record.serverResponse)?.data)
+  add(record.data)
+
+  const props = asRecord(record.props)
+  const pageProps = asRecord(props?.pageProps)
+  add(pageProps?.shareData)
+  add(pageProps?.conversation)
+  add(pageProps?.data)
+
+  collectKnownLoaderCandidates(record.loaderData, add)
+  collectKnownLoaderCandidates(asRecord(record.state)?.loaderData, add)
+
+  return candidates
+}
+
+function collectKnownLoaderCandidates(
+  loaderData: unknown,
+  add: (value: unknown) => void,
+) {
+  const record = asRecord(loaderData)
+
+  if (!record) {
+    return
+  }
+
+  for (const value of Object.values(record)) {
+    add(value)
+    add(asRecord(value)?.data)
+    add(asRecord(asRecord(value)?.serverResponse)?.data)
+  }
 }
 
 function findConversationCandidates(root: unknown): unknown[] {

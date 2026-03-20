@@ -332,7 +332,7 @@ describe('convertShareUrlToMarkdown', () => {
     expect(result.markdown).toContain('sum(numbers)')
   })
 
-  test('forwards includeSystemMessages to the markdown renderer', async () => {
+  test('omits system messages by default', async () => {
     const result = await convertShareUrlToMarkdown(
       'https://chatgpt.com/share/12345678-1234-1234-1234-1234567890ab',
       {
@@ -344,7 +344,6 @@ describe('convertShareUrlToMarkdown', () => {
             },
             status: 200,
           }),
-        includeSystemMessages: false,
       },
     )
 
@@ -373,9 +372,7 @@ describe('convertShareUrlToMarkdown', () => {
     )
 
     expect(result.conversation.title).toBe('Router Hydration Share')
-    expect(result.warnings).toEqual([
-      'Fell back to browser extraction; page scripts were executed.',
-    ])
+    expect(result.warnings).toEqual([])
     expect(result.markdown).toContain('# Router Hydration Share')
     expect(result.markdown).toContain('It is embedded in the React Router loader response.')
   })
@@ -403,7 +400,7 @@ describe('convertShareUrlToMarkdown', () => {
 })
 
 describe('renderConversationToMarkdown', () => {
-  test('can exclude system messages from the rendered markdown', () => {
+  test('omits system messages from the rendered markdown by default', () => {
     const markdown = renderConversationToMarkdown(
       {
         createdAt: '2026-03-20T00:00:00.000Z',
@@ -430,12 +427,41 @@ describe('renderConversationToMarkdown', () => {
       },
       {
         exportedAt: new Date('2026-03-20T00:00:00.000Z'),
-        includeSystemMessages: false,
       },
     )
 
     expect(markdown).not.toContain('## System')
     expect(markdown).toContain('## User')
     expect(markdown).toContain('## Assistant (GPT-4o)')
+  })
+
+  test('can include system messages when requested', () => {
+    const markdown = renderConversationToMarkdown(
+      {
+        createdAt: '2026-03-20T00:00:00.000Z',
+        messages: [
+          {
+            blocks: [{ kind: 'text', text: 'Internal instruction' }],
+            id: 'system-1',
+            role: 'system',
+          },
+          {
+            blocks: [{ kind: 'text', text: 'Hi' }],
+            id: 'user-1',
+            role: 'user',
+          },
+        ],
+        sourceUrl: 'https://chatgpt.com/share/example',
+        title: 'Filtered Chat',
+      },
+      {
+        exportedAt: new Date('2026-03-20T00:00:00.000Z'),
+        includeSystemMessages: true,
+      },
+    )
+
+    expect(markdown).toContain('## System')
+    expect(markdown).toContain('Internal instruction')
+    expect(markdown).toContain('## User')
   })
 })
