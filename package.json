@@ -6,7 +6,7 @@
   "packageManager": "bun@1.1.43",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build && node scripts/copy-serverless-chromium-assets.mjs",
+    "build": "vite build",
     "start": "node .output/server/index.mjs",
     "test": "bun test",
     "typecheck": "tsc --noEmit",

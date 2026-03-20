@@ -1,13 +1,23 @@
-import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { fileURLToPath } from 'node:url'
-import sparticuzChromium from '@sparticuz/chromium'
-import { chromium as playwrightCoreChromium } from 'playwright-core'
 import type { BrowserExtractResult } from './types'
 
 const BROWSER_NAVIGATION_TIMEOUT_MS = 15_000
 const BROWSER_SIGNAL_TIMEOUT_MS = 5_000
 const require = createRequire(import.meta.url)
+
+type PlaywrightModule = {
+  chromium?: any
+}
+
+type ServerlessChromiumModule = {
+  args: string[]
+  executablePath: () => Promise<string>
+}
+
+type ServerlessBrowserRuntime = {
+  chromiumPackage: ServerlessChromiumModule
+  playwrightCore: PlaywrightModule
+}
 
 export async function extractConversationInBrowser(
   url: string,
@@ -132,20 +142,27 @@ export async function extractConversationInBrowser(
 async function extractConversationInServerlessBrowser(
   url: string,
 ): Promise<BrowserExtractResult | null> {
-  const chromiumAssetDir = resolveChromiumAssetDir()
-  const executablePath = await sparticuzChromium.executablePath(chromiumAssetDir)
+  const runtime = await loadServerlessBrowserRuntime()
+
+  if (!runtime?.playwrightCore.chromium) {
+    logWarn('Serverless browser runtime is unavailable', { url })
+    return null
+  }
+
+  const executablePath = await runtime.chromiumPackage.executablePath()
 
   logInfo('Playwright fallback invoked', {
-    chromiumAssetDir,
     executablePath: getSafeExecutablePath(executablePath),
     node: process.version,
+    playwrightCorePackagePath: resolveModulePath('playwright-core'),
     runtime: 'vercel-serverless',
+    serverlessChromiumPackagePath: resolveModulePath('@sparticuz/chromium'),
     url,
     vercelEnv: process.env.VERCEL_ENV ?? null,
   })
 
-  const browser = await playwrightCoreChromium.launch({
-    args: sparticuzChromium.args,
+  const browser = await runtime.playwrightCore.chromium.launch({
+    args: runtime.chromiumPackage.args,
     executablePath,
     headless: true,
   })
@@ -233,6 +250,60 @@ async function extractConversationInServerlessBrowser(
   }
 }
 
+async function loadServerlessBrowserRuntime(): Promise<ServerlessBrowserRuntime | null> {
+  const chromiumPackagePath = resolveModulePath('@sparticuz/chromium')
+  const playwrightCorePackagePath = resolveModulePath('playwright-core')
+
+  let chromiumPackage: ServerlessChromiumModule | null = null
+
+  try {
+    chromiumPackage = require('@sparticuz/chromium')
+  } catch (cause) {
+    logWarn('Serverless Chromium require failed', {
+      chromiumPackagePath,
+      error: getErrorMessage(cause),
+    })
+    return null
+  }
+
+  let playwrightCore: PlaywrightModule | null = null
+
+  try {
+    playwrightCore = require('playwright-core')
+  } catch (cause) {
+    logWarn('playwright-core require failed', {
+      error: getErrorMessage(cause),
+      playwrightCorePackagePath,
+    })
+    return null
+  }
+
+  if (
+    !chromiumPackage ||
+    !Array.isArray(chromiumPackage.args) ||
+    typeof chromiumPackage.executablePath !== 'function'
+  ) {
+    logWarn('Serverless Chromium module shape is invalid', {
+      chromiumPackagePath,
+    })
+    return null
+  }
+
+  if (!playwrightCore) {
+    return null
+  }
+
+  logInfo('Serverless browser runtime loaded', {
+    chromiumPackagePath,
+    playwrightCorePackagePath,
+  })
+
+  return {
+    chromiumPackage,
+    playwrightCore,
+  }
+}
+
 async function loadPlaywright(): Promise<{ chromium?: any } | null> {
   const moduleName = 'playwright'
 
@@ -292,15 +363,6 @@ function getSafeExecutablePath(path: string | null): string | null {
 
 function isVercelRuntime(): boolean {
   return Boolean(process.env.VERCEL || process.env.VERCEL_ENV)
-}
-
-function resolveChromiumAssetDir(): string | undefined {
-  const candidates = [
-    fileURLToPath(new URL('../bin', import.meta.url)),
-    fileURLToPath(new URL('../../bin', import.meta.url)),
-  ]
-
-  return candidates.find((candidate) => existsSync(candidate))
 }
 
 function logInfo(message: string, details: Record<string, unknown>) {
