@@ -2,6 +2,14 @@ import { load, type CheerioAPI } from 'cheerio'
 import type { AnyNode, Element } from 'domhandler'
 import { extractConversationInBrowser } from './browser'
 import { ChatdumpError } from './errors'
+import {
+  createCopilotShareConversationApiUrl,
+  extractCopilotConversationPayloads,
+} from './copilot'
+import {
+  createGrokShareConversationApiUrl,
+  extractGrokConversationPayloads,
+} from './grok'
 import { renderConversationToMarkdown } from './render'
 import type {
   BrowserExtractor,
@@ -49,13 +57,14 @@ export async function convertShareUrlToMarkdown(
   rawUrl: string,
   options: ConvertOptions = {},
 ): Promise<ConvertResult> {
-  const { url } = normalizeShareUrl(rawUrl)
+  const { provider, url } = normalizeShareUrl(rawUrl)
   const fetchImpl = options.fetchImpl ?? fetch
   const loader = async () => {
     const { conversation, warnings } = await loadShareConversation(url, {
       browserExtractor: options.browserExtractor,
       enableBrowserFallback: options.enableBrowserFallback,
       fetchImpl,
+      provider,
     })
 
     return {
@@ -133,8 +142,17 @@ async function loadShareConversation(
     browserExtractor?: BrowserExtractor
     enableBrowserFallback?: boolean
     fetchImpl: FetchImpl
+    provider: ReturnType<typeof normalizeShareUrl>['provider']
   },
 ): Promise<{ conversation: NormalizedConversation; warnings: string[] }> {
+  if (options.provider === 'grok') {
+    return loadGrokShareConversation(url, options.fetchImpl)
+  }
+
+  if (options.provider === 'copilot') {
+    return loadCopilotShareConversation(url, options.fetchImpl)
+  }
+
   try {
     const { finalUrl, html } = await fetchSharePage(url, options.fetchImpl)
 
@@ -159,6 +177,106 @@ async function loadShareConversation(
     })
 
     return resolveBrowserFallback(url.toString(), options.browserExtractor, cause)
+  }
+}
+
+async function loadGrokShareConversation(
+  url: URL,
+  fetchImpl: FetchImpl,
+): Promise<{ conversation: NormalizedConversation; warnings: string[] }> {
+  const apiUrl = createGrokShareConversationApiUrl(url)
+  let response: Response
+
+  try {
+    response = await fetchImpl(apiUrl.toString(), {
+      headers: {
+        accept: 'application/json,text/plain;q=0.9,*/*;q=0.8',
+        'user-agent': 'chatdump/0.1',
+      },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15_000),
+    })
+  } catch (cause) {
+    throw new ChatdumpError(
+      'FETCH_FAILED',
+      `failed to fetch Grok share payload: ${cause instanceof Error ? cause.message : 'network error'}`,
+    )
+  }
+
+  if (!response.ok) {
+    throw new ChatdumpError(
+      'FETCH_FAILED',
+      `failed to fetch Grok share payload: HTTP ${response.status}`,
+    )
+  }
+
+  const responseText = await response.text()
+  const conversation = selectBestConversationFromPayloads(
+    extractGrokConversationPayloads(responseText),
+    url.toString(),
+    getDefaultConversationTitle(url.toString()),
+  )
+
+  if (!conversation) {
+    throw new ChatdumpError(
+      'EXTRACT_FAILED',
+      'could not extract conversation data from Grok share payload',
+    )
+  }
+
+  return {
+    conversation,
+    warnings: [],
+  }
+}
+
+async function loadCopilotShareConversation(
+  url: URL,
+  fetchImpl: FetchImpl,
+): Promise<{ conversation: NormalizedConversation; warnings: string[] }> {
+  const apiUrl = createCopilotShareConversationApiUrl(url)
+  let response: Response
+
+  try {
+    response = await fetchImpl(apiUrl.toString(), {
+      headers: {
+        accept: 'application/json,text/plain;q=0.9,*/*;q=0.8',
+        'user-agent': 'chatdump/0.1',
+      },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15_000),
+    })
+  } catch (cause) {
+    throw new ChatdumpError(
+      'FETCH_FAILED',
+      `failed to fetch Copilot share payload: ${cause instanceof Error ? cause.message : 'network error'}`,
+    )
+  }
+
+  if (!response.ok) {
+    throw new ChatdumpError(
+      'FETCH_FAILED',
+      `failed to fetch Copilot share payload: HTTP ${response.status}`,
+    )
+  }
+
+  const responseText = await response.text()
+  const conversation = selectBestConversationFromPayloads(
+    extractCopilotConversationPayloads(responseText),
+    url.toString(),
+    getDefaultConversationTitle(url.toString()),
+  )
+
+  if (!conversation) {
+    throw new ChatdumpError(
+      'EXTRACT_FAILED',
+      'could not extract conversation data from Copilot share payload',
+    )
+  }
+
+  return {
+    conversation,
+    warnings: [],
   }
 }
 
@@ -402,6 +520,7 @@ function buildExtractionFailureMessage(
   const looksLikeLoginPage =
     /(?:^|\b)log in(?:\b|$)/i.test(bodyText) &&
     /(?:^|\b)sign up(?:\b|$)/i.test(bodyText)
+  const looksLikeAntiBotChallenge = isAntiBotChallengePage($, bodyText, scriptTexts)
   const redirectedAwayFromShare = didRedirectAwayFromShare(sourceUrl)
   const titleSuffix =
     pageTitle && pageTitle !== defaultTitle ? ` (page title: ${pageTitle})` : ''
@@ -414,6 +533,10 @@ function buildExtractionFailureMessage(
     return `could not extract conversation data from share page: found embedded payload markers but could not decode a conversation payload${titleSuffix}`
   }
 
+  if (looksLikeAntiBotChallenge) {
+    return `could not extract conversation data from share page: received an anti-bot challenge page instead of the public shared conversation${titleSuffix}`
+  }
+
   if (!hasDomMessages && looksLikeLoginPage) {
     return `could not extract conversation data from share page: received a generic page instead of a public shared conversation${titleSuffix}`
   }
@@ -423,6 +546,26 @@ function buildExtractionFailureMessage(
 
 function didRedirectAwayFromShare(sourceUrl: string): boolean {
   return tryNormalizeShareUrl(sourceUrl) === null
+}
+
+function isAntiBotChallengePage(
+  $: CheerioAPI,
+  bodyText: string,
+  scriptTexts: string[],
+): boolean {
+  const title = $('title').first().text().replace(/\s+/g, ' ').trim()
+  const combinedBodyText = bodyText.toLowerCase()
+  const combinedScripts = scriptTexts.join('\n')
+
+  return (
+    title.toLowerCase() === 'just a moment...' ||
+    combinedBodyText.includes('performing security verification') ||
+    combinedBodyText.includes('verifying you are human') ||
+    combinedBodyText.includes('enable javascript and cookies to continue') ||
+    combinedBodyText.includes('performance and security by cloudflare') ||
+    $('#challenge-error-text').length > 0 ||
+    combinedScripts.includes('_cf_chl_opt')
+  )
 }
 
 function extractStructuredConversation(
@@ -1282,7 +1425,6 @@ function normalizePart(part: unknown): ContentBlock[] {
 
   return []
 }
-
 function extractAttachments(message: Record<string, unknown>): ContentBlock[] {
   const attachmentCollections = [
     message.attachments,

@@ -209,6 +209,22 @@ const reactRouterHydrationHtml = `
 </html>
 `
 
+const antiBotChallengeHtml = `
+<!doctype html>
+<html lang="en-US">
+  <head>
+    <title>Just a moment...</title>
+  </head>
+  <body>
+    <div>Verifying you are human. This may take a few seconds.</div>
+    <div>Performance and Security by Cloudflare</div>
+    <script>
+      window._cf_chl_opt = { cZone: 'example.com' };
+    </script>
+  </body>
+</html>
+`
+
 const genericShellHtml = `
 <!doctype html>
 <html>
@@ -306,6 +322,17 @@ describe('extractConversationFromHtml', () => {
       ),
     ).toThrow(
       'could not extract conversation data from share page: found embedded payload markers but could not decode a conversation payload (page title: Shared Chat)',
+    )
+  })
+
+  test('reports when a share page is blocked by an anti-bot challenge', () => {
+    expect(() =>
+      extractConversationFromHtml(
+        antiBotChallengeHtml,
+        'https://chatgpt.com/share/example',
+      ),
+    ).toThrow(
+      'could not extract conversation data from share page: received an anti-bot challenge page instead of the public shared conversation (page title: Just a moment...)',
     )
   })
 })

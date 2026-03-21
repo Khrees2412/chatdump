@@ -2,9 +2,10 @@
 
 Convert a public share link into clean Markdown.
 
-Live app: `https://chatdump.vercel.app`
+Live app: [https://chatdump.vercel.app](https://chatdump.vercel.app)
 
 Paste a public share link, get back a readable Markdown transcript.
+Current supported platforms: ChatGPT, Claude, Copilot, Gemini, and Grok.
 
 It includes:
 
@@ -50,9 +51,11 @@ Useful options:
 
 - `https://chatgpt.com/share/<id>`
 - `https://chat.openai.com/share/<id>`
+- `https://copilot.microsoft.com/shares/<id>`
 - `https://gemini.google.com/share/<id>`
 - `https://g.co/gemini/share/<id>`
 - `https://claude.ai/share/<id>`
+- `https://grok.com/share/<id>`
 
 Redirects between supported share domains are handled.
 
@@ -76,6 +79,8 @@ Environment variables:
 - `CHATDUMP_HEALTH_CHATGPT_URL`: public ChatGPT share URL used for the probe
 - `CHATDUMP_HEALTH_GEMINI_URL`: public Gemini share URL used for the probe
 - `CHATDUMP_HEALTH_CLAUDE_URL`: public Claude share URL used for the probe
+- `CHATDUMP_HEALTH_COPILOT_URL`: public Copilot share URL used for the probe
+- `CHATDUMP_HEALTH_GROK_URL`: public Grok share URL used for the probe
 - `CHATDUMP_HEALTH_CACHE_TTL_MS`: optional in-memory probe cache TTL, defaults to 5 minutes
 
 Example:
@@ -83,12 +88,12 @@ Example:
 ```bash
 curl \
   -H "Authorization: Bearer $CHATDUMP_HEALTH_TOKEN" \
-  "https://chatdump.vercel.app/api/private/provider-health?providers=chatgpt,gemini,claude"
+  "https://chatdump.vercel.app/api/private/provider-health?providers=chatgpt,claude,copilot,gemini,grok"
 ```
 
 Useful query parameters:
 
-- `providers=chatgpt,gemini,claude`: limit the check to one or more providers
+- `providers=chatgpt,claude,copilot,gemini,grok`: limit the check to one or more providers
 - `fresh=1`: bypass the short-lived health cache and run live probes
 
 ## Notes

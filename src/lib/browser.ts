@@ -4,9 +4,17 @@ import {
   isClaudeSnapshotResponseUrl,
 } from './claude'
 import {
+  extractCopilotConversationPayloads,
+  isCopilotShareConversationResponseUrl,
+} from './copilot'
+import {
   extractGeminiConversationPayloads,
   isGeminiConversationResponseUrl,
 } from './gemini'
+import {
+  extractGrokConversationPayloads,
+  isGrokShareConversationResponseUrl,
+} from './grok'
 import type { BrowserExtractResult } from './types'
 import { tryNormalizeShareUrl, type ShareProvider } from './url'
 
@@ -221,10 +229,74 @@ async function waitForProviderPayloads(
   switch (provider) {
     case 'claude':
       return waitForClaudeSnapshotPayloads(page, url)
+    case 'copilot':
+      return waitForCopilotConversationPayloads(page, url)
     case 'gemini':
       return waitForGeminiConversationPayloads(page, url)
+    case 'grok':
+      return waitForGrokConversationPayloads(page, url)
     default:
       return []
+  }
+}
+
+async function waitForCopilotConversationPayloads(
+  page: any,
+  url: string,
+): Promise<unknown[]> {
+  try {
+    const response = await page.waitForResponse(
+      (candidate: any) => isCopilotShareConversationResponseUrl(candidate.url()),
+      {
+        timeout: BROWSER_NAVIGATION_TIMEOUT_MS,
+      },
+    )
+    const responseText = await response.text()
+    const payloads = extractCopilotConversationPayloads(responseText)
+
+    logInfo('Captured Copilot share payload', {
+      payloadCount: payloads.length,
+      responseUrl: response.url(),
+      url,
+    })
+
+    return payloads
+  } catch (cause) {
+    logWarn('Copilot share payload capture did not complete', {
+      error: getErrorMessage(cause),
+      url,
+    })
+    return []
+  }
+}
+
+async function waitForGrokConversationPayloads(
+  page: any,
+  url: string,
+): Promise<unknown[]> {
+  try {
+    const response = await page.waitForResponse(
+      (candidate: any) => isGrokShareConversationResponseUrl(candidate.url()),
+      {
+        timeout: BROWSER_NAVIGATION_TIMEOUT_MS,
+      },
+    )
+    const responseText = await response.text()
+    const payloads = extractGrokConversationPayloads(responseText)
+
+    logInfo('Captured Grok conversation payload', {
+      payloadCount: payloads.length,
+      responseUrl: response.url(),
+      url,
+    })
+
+    return payloads
+  } catch (cause) {
+    logWarn('Grok conversation payload capture did not complete', {
+      error: getErrorMessage(cause),
+      url,
+    })
+    return []
   }
 }
 

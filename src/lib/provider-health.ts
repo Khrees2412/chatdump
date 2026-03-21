@@ -4,14 +4,22 @@ import type { ShareProvider } from './url'
 
 const DEFAULT_PROVIDER_HEALTH_CACHE_TTL_MS = 5 * 60 * 1000
 export const PRIVATE_PROVIDER_HEALTH_PATH = '/api/private/provider-health'
-const PROVIDERS: ShareProvider[] = ['chatgpt', 'claude', 'gemini']
+const PROVIDERS: ShareProvider[] = [
+  'chatgpt',
+  'claude',
+  'copilot',
+  'gemini',
+  'grok',
+]
 
 export const PROVIDER_HEALTH_TOKEN_ENV_NAME = 'CHATDUMP_HEALTH_TOKEN'
 export const PROVIDER_HEALTH_CACHE_TTL_ENV_NAME = 'CHATDUMP_HEALTH_CACHE_TTL_MS'
 export const PROVIDER_HEALTH_URL_ENV_NAMES: Record<ShareProvider, string> = {
   chatgpt: 'CHATDUMP_HEALTH_CHATGPT_URL',
   claude: 'CHATDUMP_HEALTH_CLAUDE_URL',
+  copilot: 'CHATDUMP_HEALTH_COPILOT_URL',
   gemini: 'CHATDUMP_HEALTH_GEMINI_URL',
+  grok: 'CHATDUMP_HEALTH_GROK_URL',
 }
 
 export interface ProviderHealthProbeResult {
