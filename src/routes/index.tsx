@@ -2,9 +2,12 @@ import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
+import rehypeHighlight from 'rehype-highlight'
 import { useDeferredValue, useEffect, useRef, useState, startTransition } from 'react'
 import { Button } from '../components/ui/button'
 import { cn } from '../lib/cn'
+import { splitMarkdownForPreview } from '../lib/markdown-preview'
 
 type ConvertInput = {
   url: string
@@ -25,6 +28,32 @@ type PersistedHomeState = {
 
 const monoCapsClass = 'font-mono uppercase tracking-[0.14em]'
 const persistedHomeStateKey = 'chatdump.home-state.v1'
+
+function hasMarkdownTable(markdown: string): boolean {
+  return splitMarkdownForPreview(markdown).some(
+    (segment) => segment.kind === 'table',
+  )
+}
+
+function renderInlineCell(value: string): React.ReactNode {
+  const parts: React.ReactNode[] = []
+  const chunks = value.split(/(`[^`]*`)/g)
+
+  for (const [index, chunk] of chunks.entries()) {
+    if (!chunk) {
+      continue
+    }
+
+    if (chunk.startsWith('`') && chunk.endsWith('`') && chunk.length >= 2) {
+      parts.push(<code key={index}>{chunk.slice(1, -1)}</code>)
+      continue
+    }
+
+    parts.push(chunk)
+  }
+
+  return parts.length > 0 ? parts : value
+}
 
 function readPersistedHomeState(): PersistedHomeState | null {
   if (typeof window === 'undefined') {
@@ -137,12 +166,13 @@ function Home() {
   const lineCount = hasResult ? deferredMarkdown.split('\n').length : 0
   const characterCount = hasResult ? deferredMarkdown.length : 0
   const warningCount = warnings.length
+  const previewSegments = splitMarkdownForPreview(deferredMarkdown)
   const copyLabel =
     copyState === 'copied'
       ? 'Copied'
       : copyState === 'error'
         ? 'Copy failed'
-        : 'Copy Markdown'
+      : 'Copy Markdown'
   const previewLabel = isRenderedPreview ? 'Show Markdown' : 'Show Preview'
 
   function removeToast(id: number) {
@@ -200,7 +230,7 @@ function Home() {
           }
 
           setMarkdown(result.markdown)
-          setOutputMode('markdown')
+          setOutputMode(hasMarkdownTable(result.markdown) ? 'preview' : 'markdown')
           setWarnings(result.warnings)
         })
         .catch((cause) => {
@@ -304,7 +334,12 @@ function Home() {
       setUrl(persistedState.url)
       setMarkdown(persistedState.markdown)
       setWarnings(persistedState.warnings)
-      setOutputMode(persistedState.outputMode)
+      setOutputMode(
+        persistedState.outputMode === 'preview' ||
+          hasMarkdownTable(persistedState.markdown)
+          ? 'preview'
+          : 'markdown',
+      )
       previousFeedbackRef.current = {
         error: null,
         warnings: persistedState.warnings,
@@ -449,13 +484,29 @@ function Home() {
                 onSubmit={handleSubmit}
               >
                 <label className="grid gap-[0.6rem]">
-                  <span
-                    className={cn(
-                      monoCapsClass,
-                      'text-[0.78rem] tracking-[0.12em] text-ink-soft',
-                    )}
-                  >
-                    Public share link
+                  <span className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        monoCapsClass,
+                        'text-[0.78rem] tracking-[0.12em] text-ink-soft',
+                      )}
+                    >
+                      Public share link
+                    </span>
+                    <span className="group relative inline-flex">
+                      <button
+                        aria-label="Supported share sources"
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-line bg-white/50 text-[0.68rem] font-semibold text-ink-soft transition-[border-color,background,color,transform] duration-[180ms] ease-out hover:-translate-y-px hover:border-line-strong hover:bg-white/72 hover:text-ink focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--focus)]"
+                        title="Supported sources: ChatGPT, Claude, Copilot, Gemini, and Grok share links."
+                        type="button"
+                      >
+                        ?
+                      </button>
+                      <span className="pointer-events-none absolute left-1/2 top-full z-10 mt-2 w-[15.5rem] -translate-x-1/2 rounded-[0.85rem] border border-line bg-[rgba(255,251,246,0.98)] px-3 py-2 font-mono text-[0.7rem] leading-[1.5] tracking-[0.01em] text-ink-muted opacity-0 shadow-soft transition duration-[160ms] ease-out group-hover:opacity-100 group-focus-within:opacity-100">
+                        ChatGPT, Claude, Copilot, Gemini, and Grok share links
+                        are supported.
+                      </span>
+                    </span>
                   </span>
                   <div className="grid min-h-[3.75rem] grid-cols-[auto_minmax(0,1fr)] items-center gap-[0.8rem] rounded-[1.1rem] border border-line-strong bg-paper-inset pl-[0.95rem] pr-[0.4rem] transition-[border-color,box-shadow,transform] duration-[180ms] ease-out focus-within:-translate-y-px focus-within:border-[rgba(155,106,51,0.48)] focus-within:shadow-[0_0_0_4px_var(--focus)] max-[720px]:min-h-[3.45rem] max-[720px]:gap-[0.65rem] max-[720px]:rounded-[1rem] max-[720px]:pl-[0.85rem] max-[720px]:pr-[0.3rem]">
                     <svg aria-hidden="true" className="h-[1.05rem] w-[1.05rem]" viewBox="0 0 24 24">
@@ -477,14 +528,6 @@ function Home() {
                       onChange={(event) => setUrl(event.target.value)}
                     />
                   </div>
-                  <p className="font-mono text-[0.8rem] leading-[1.6] tracking-[0.02em] text-ink-soft">
-                    Supports `chatgpt.com/share/...`,
-                    `chat.openai.com/share/...`, and
-                    `claude.ai/share/...`, and
-                    `copilot.microsoft.com/shares/...`, and
-                    `gemini.google.com/share/...`, and
-                    `grok.com/share/...`.
-                  </p>
                 </label>
 
                 <div className="grid gap-3 min-[1100px]:items-center">
@@ -606,21 +649,116 @@ function Home() {
               {isRenderedPreview ? (
                 <article
                   className="output-surface markdown-preview grid h-full gap-4 leading-[1.68] text-ink max-[720px]:gap-3 max-[720px]:text-[0.95rem]"
+                  data-debug-md-length={deferredMarkdown.length}
+                  data-debug-md-has-table={deferredMarkdown.includes('|') ? 'yes' : 'no'}
                   ref={(node) => {
                     outputBodyRef.current = node
                   }}
                   tabIndex={0}
                 >
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      a: ({ node: _node, ...props }) => (
-                        <a {...props} rel="noreferrer" target="_blank" />
-                      ),
-                    }}
-                  >
-                    {deferredMarkdown}
-                  </ReactMarkdown>
+                  <div id="debug-table-check" style={{ display: 'none' }}>
+                    TABLE_CHECK_START
+                    {deferredMarkdown.includes('|') ? 'HAS_PIPE' : 'NO_PIPE'}
+                    {deferredMarkdown.includes('---') ? 'HAS_DASHES' : 'NO_DASHES'}
+                    TABLE_CHECK_END
+                  </div>
+                  {previewSegments.map((segment, index) => {
+                    if (segment.kind === 'table') {
+                      return (
+                        <div className="table-scroll-wrapper" key={`table-${index}`}>
+                          <table>
+                            <thead>
+                              <tr>
+                                {segment.headers.map((cell, headerIndex) => (
+                                  <th key={`table-${index}-head-${headerIndex}`}>
+                                    {renderInlineCell(cell)}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {segment.rows.map((row, rowIndex) => (
+                                <tr key={`table-${index}-row-${rowIndex}`}>
+                                  {segment.headers.map((_, cellIndex) => (
+                                    <td key={`table-${index}-row-${rowIndex}-cell-${cellIndex}`}>
+                                      {renderInlineCell(row[cellIndex] ?? '')}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <ReactMarkdown
+                        key={`markdown-${index}`}
+                        remarkPlugins={[remarkGfm]}
+                        rehypePlugins={[rehypeRaw, rehypeHighlight]}
+                        components={{
+                          a: ({ node: _node, ...props }) => (
+                            <a {...props} rel="noreferrer" target="_blank" />
+                          ),
+                          // Skip rendering empty code blocks (show as invisible
+                          // dark bars otherwise) and show a language label
+                          pre: ({ node: _node, children, ...props }) => {
+                            // Extract text from React children tree
+                            const getTextContent = (child: React.ReactNode): string => {
+                              if (typeof child === 'string') return child
+                              if (typeof child === 'number') return String(child)
+                              if (!child) return ''
+                              if (Array.isArray(child)) return child.map(getTextContent).join('')
+                              if (typeof child === 'object' && child !== null && 'props' in child) {
+                                const el = child as unknown as { props: { children?: React.ReactNode } }
+                                return getTextContent(el.props.children)
+                              }
+                              return ''
+                            }
+
+                            const textContent = getTextContent(children)
+
+                            // Don't render empty code blocks
+                            if (!textContent.trim()) {
+                              return null
+                            }
+
+                            // Try to extract language from the code element's className
+                            let lang: string | undefined
+                            const firstChild = Array.isArray(children) ? children[0] : children
+                            if (
+                              firstChild &&
+                              typeof firstChild === 'object' &&
+                              'props' in firstChild
+                            ) {
+                              const el = firstChild as unknown as { props: { className?: string } }
+                              const cls = el.props.className
+                              if (typeof cls === 'string') {
+                                const match = cls.match(/language-(\S+)/)
+                                if (match) lang = match[1]
+                              }
+                            }
+
+                            return (
+                              <div className="code-block-wrapper">
+                                {lang ? (
+                                  <span className="code-block-lang">{lang}</span>
+                                ) : null}
+                                <pre {...props}>{children}</pre>
+                              </div>
+                            )
+                          },
+                          // Ensure HR renders as a proper themed element
+                          hr: ({ node: _node, ...props }) => (
+                            <hr {...props} />
+                          ),
+                        }}
+                      >
+                        {segment.content}
+                      </ReactMarkdown>
+                    )
+                  })}
                 </article>
               ) : (
                 <pre

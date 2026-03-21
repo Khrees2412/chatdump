@@ -216,7 +216,7 @@ function renderCitationList(citations: Array<{ title: string; url: string }>): s
     'Sources:',
     '',
     ...[...deduped.values()].map((citation) =>
-      `- ${citation.title}: ${citation.url}`,
+      `- [${citation.title}](${citation.url})`,
     ),
   ].join('\n')
 }

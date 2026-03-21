@@ -165,6 +165,15 @@ body::after {
   overflow-wrap: anywhere;
 }
 
+.markdown-preview strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.markdown-preview em {
+  font-style: italic;
+}
+
 .markdown-preview h1,
 .markdown-preview h2,
 .markdown-preview h3,
@@ -191,6 +200,12 @@ body::after {
   font-size: 0.98rem;
 }
 
+.markdown-preview h5,
+.markdown-preview h6 {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
 .markdown-preview p,
 .markdown-preview li,
 .markdown-preview blockquote {
@@ -211,6 +226,27 @@ body::after {
   display: grid;
   gap: 0.45rem;
   padding-left: 1.25rem;
+  list-style-position: outside;
+}
+
+.markdown-preview ul {
+  list-style-type: disc;
+}
+
+.markdown-preview ol {
+  list-style-type: decimal;
+}
+
+.markdown-preview ul ul,
+.markdown-preview ul ol,
+.markdown-preview ol ul,
+.markdown-preview ol ol {
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+}
+
+.markdown-preview li > p {
+  margin: 0;
 }
 
 .markdown-preview blockquote {
@@ -219,6 +255,14 @@ body::after {
   border-radius: 0 1rem 1rem 0;
   color: var(--ink-muted);
   padding: 0.9rem 1rem;
+}
+
+.markdown-preview blockquote > * + * {
+  margin-top: 0.6rem;
+}
+
+.markdown-preview blockquote p {
+  margin: 0;
 }
 
 .markdown-preview a {
@@ -253,7 +297,10 @@ body::after {
     monospace;
   font-size: 0.84rem;
   line-height: 1.7;
-  overflow: auto;
+  overflow-x: auto;
+  /* Wrap long lines instead of forcing horizontal scroll */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
   padding: 1rem;
 }
 
@@ -262,14 +309,62 @@ body::after {
   border: 0;
   color: inherit;
   padding: 0;
+  border-radius: 0;
+}
+
+.markdown-preview .code-block-wrapper {
+  position: relative;
+}
+
+.markdown-preview .code-block-lang {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 0 0 0.5rem 0.5rem;
+  color: rgba(246, 239, 229, 0.5);
+  font-family:
+    'IBM Plex Mono',
+    'SFMono-Regular',
+    'Menlo',
+    monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  padding: 0.2rem 0.65rem;
+  position: absolute;
+  right: 0.75rem;
+  text-transform: uppercase;
+  top: 0;
+  z-index: 1;
 }
 
 .markdown-preview table {
   border-collapse: collapse;
-  display: block;
+  display: table;
   font-size: 0.9rem;
+  min-width: 100%;
+  table-layout: auto;
+}
+
+/* Wrapper div injected by the custom ReactMarkdown table component */
+.markdown-preview .table-scroll-wrapper {
+  border-radius: 0.75rem;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.28);
+  display: block;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 0;
   width: 100%;
+}
+
+.markdown-preview .table-scroll-wrapper table {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 100%;
+  width: max-content;
+}
+
+.markdown-preview .table-scroll-wrapper th,
+.markdown-preview .table-scroll-wrapper td {
+  border-color: var(--line);
 }
 
 .markdown-preview th,
@@ -279,6 +374,7 @@ body::after {
   padding: 0.65rem 0.75rem;
   text-align: left;
   vertical-align: top;
+  white-space: normal;
 }
 
 .markdown-preview th {
@@ -286,10 +382,70 @@ body::after {
   font-weight: 600;
 }
 
+.markdown-preview hr {
+  border: none;
+  border-top: 1.5px solid var(--line-strong);
+  margin: 0;
+  opacity: 0.7;
+}
+
 .markdown-preview img {
   border-radius: 0.95rem;
   display: block;
   max-width: 100%;
+}
+
+/* ─── Syntax highlighting (highlight.js warm theme) ─────────────────────── */
+
+.markdown-preview .hljs-keyword,
+.markdown-preview .hljs-selector-tag,
+.markdown-preview .hljs-built_in,
+.markdown-preview .hljs-name,
+.markdown-preview .hljs-tag {
+  color: #e9a96e;
+}
+
+.markdown-preview .hljs-string,
+.markdown-preview .hljs-attr,
+.markdown-preview .hljs-symbol,
+.markdown-preview .hljs-bullet,
+.markdown-preview .hljs-addition {
+  color: #a8c77a;
+}
+
+.markdown-preview .hljs-title,
+.markdown-preview .hljs-section,
+.markdown-preview .hljs-attribute {
+  color: #f0c98b;
+}
+
+.markdown-preview .hljs-variable,
+.markdown-preview .hljs-template-variable {
+  color: #c5a9f0;
+}
+
+.markdown-preview .hljs-comment,
+.markdown-preview .hljs-quote,
+.markdown-preview .hljs-deletion,
+.markdown-preview .hljs-meta {
+  color: #7c7268;
+  font-style: italic;
+}
+
+.markdown-preview .hljs-number,
+.markdown-preview .hljs-regexp,
+.markdown-preview .hljs-literal,
+.markdown-preview .hljs-type,
+.markdown-preview .hljs-link {
+  color: #8abce8;
+}
+
+.markdown-preview .hljs-emphasis {
+  font-style: italic;
+}
+
+.markdown-preview .hljs-strong {
+  font-weight: 700;
 }
 
 @media (max-width: 720px) {

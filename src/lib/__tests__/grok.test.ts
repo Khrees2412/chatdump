@@ -188,4 +188,25 @@ describe('convertShareUrlToMarkdown with Grok shares', () => {
       'The **Soviet Union ended** in late **1991**',
     )
   })
+
+  test('falls back to browser extraction when the Grok payload fetch fails', async () => {
+    const shareUrl = 'https://grok.com/share/c2hhcmQtNQ_f461c973-f826-418e-9e7e-8097b676b357'
+    const payloads = extractGrokConversationPayloads(buildGrokShareResponse())
+
+    const result = await convertShareUrlToMarkdown(shareUrl, {
+      browserExtractor: async (url) => ({
+        payloads,
+        sourceUrl: url,
+        warnings: ['browser fallback used'],
+      }),
+      fetchImpl: async () => {
+        throw new Error('fetch failed')
+      },
+    })
+
+    expect(result.conversation.sourceUrl).toBe(shareUrl)
+    expect(result.conversation.title).toBe('Soviet Union: History and Legacy')
+    expect(result.warnings).toContain('browser fallback used')
+    expect(result.markdown).toContain('# Soviet Union: History and Legacy')
+  })
 })

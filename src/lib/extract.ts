@@ -146,7 +146,11 @@ async function loadShareConversation(
   },
 ): Promise<{ conversation: NormalizedConversation; warnings: string[] }> {
   if (options.provider === 'grok') {
-    return loadGrokShareConversation(url, options.fetchImpl)
+    return loadGrokShareConversation(url, {
+      browserExtractor: options.browserExtractor,
+      enableBrowserFallback: options.enableBrowserFallback,
+      fetchImpl: options.fetchImpl,
+    })
   }
 
   if (options.provider === 'copilot') {
@@ -182,13 +186,17 @@ async function loadShareConversation(
 
 async function loadGrokShareConversation(
   url: URL,
-  fetchImpl: FetchImpl,
+  options: {
+    browserExtractor?: BrowserExtractor
+    enableBrowserFallback?: boolean
+    fetchImpl: FetchImpl
+  },
 ): Promise<{ conversation: NormalizedConversation; warnings: string[] }> {
   const apiUrl = createGrokShareConversationApiUrl(url)
   let response: Response
 
   try {
-    response = await fetchImpl(apiUrl.toString(), {
+    response = await options.fetchImpl(apiUrl.toString(), {
       headers: {
         accept: 'application/json,text/plain;q=0.9,*/*;q=0.8',
         'user-agent': 'chatdump/0.1',
@@ -197,17 +205,39 @@ async function loadGrokShareConversation(
       signal: AbortSignal.timeout(15_000),
     })
   } catch (cause) {
-    throw new ChatdumpError(
+    const error = new ChatdumpError(
       'FETCH_FAILED',
       `failed to fetch Grok share payload: ${cause instanceof Error ? cause.message : 'network error'}`,
     )
+
+    if (options.enableBrowserFallback === false) {
+      throw error
+    }
+
+    console.warn('[chatdump] Grok payload fetch failed; trying browser fallback', {
+      browserUrl: url.toString(),
+      error: error.message,
+    })
+
+    return resolveBrowserFallback(url.toString(), options.browserExtractor, error)
   }
 
   if (!response.ok) {
-    throw new ChatdumpError(
+    const error = new ChatdumpError(
       'FETCH_FAILED',
       `failed to fetch Grok share payload: HTTP ${response.status}`,
     )
+
+    if (options.enableBrowserFallback === false) {
+      throw error
+    }
+
+    console.warn('[chatdump] Grok payload fetch returned non-OK status; trying browser fallback', {
+      browserUrl: url.toString(),
+      error: error.message,
+    })
+
+    return resolveBrowserFallback(url.toString(), options.browserExtractor, error)
   }
 
   const responseText = await response.text()
@@ -218,10 +248,21 @@ async function loadGrokShareConversation(
   )
 
   if (!conversation) {
-    throw new ChatdumpError(
+    const error = new ChatdumpError(
       'EXTRACT_FAILED',
       'could not extract conversation data from Grok share payload',
     )
+
+    if (options.enableBrowserFallback === false) {
+      throw error
+    }
+
+    console.warn('[chatdump] Grok payload extraction failed; trying browser fallback', {
+      browserUrl: url.toString(),
+      error: error.message,
+    })
+
+    return resolveBrowserFallback(url.toString(), options.browserExtractor, error)
   }
 
   return {

@@ -65,6 +65,9 @@ function renderHeading(message: NormalizedMessage): string {
 function renderBlock(block: ContentBlock): string {
   switch (block.kind) {
     case 'text':
+      if (block.text.includes('|')) {
+        console.log('[chatdump:debug] Text block with | :', block.text.slice(0, 100) + '...')
+      }
       return block.text.trim()
     case 'code':
       return renderCodeBlock(block.language, block.code)
@@ -135,7 +138,9 @@ function renderTable(headers: string[], rows: string[][]): string {
 }
 
 function escapeCell(value: string): string {
-  return cleanText(value).replace(/\|/g, '\\|')
+  return cleanText(value)
+    .replace(/\|/g, '\\|')
+    .replace(/\n/g, '<br>')
 }
 
 function capitalize(value: string): string {
