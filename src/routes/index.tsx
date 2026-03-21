@@ -73,23 +73,14 @@ function hasMarkdownTable(markdown: string): boolean {
 }
 
 function renderInlineCell(value: string): React.ReactNode {
-  const parts: React.ReactNode[] = []
-  const chunks = value.split(/(`[^`]*`)/g)
+  let result = value
 
-  for (const [index, chunk] of chunks.entries()) {
-    if (!chunk) {
-      continue
-    }
+  result = result.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+  result = result.replace(/\*([^*]+)\*/g, '<em>$1</em>')
+  result = result.replace(/`([^`]+)`/g, '<code>$1</code>')
+  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" rel="noreferrer" target="_blank">$1</a>')
 
-    if (chunk.startsWith('`') && chunk.endsWith('`') && chunk.length >= 2) {
-      parts.push(<code key={index}>{chunk.slice(1, -1)}</code>)
-      continue
-    }
-
-    parts.push(chunk)
-  }
-
-  return parts.length > 0 ? parts : value
+  return <span dangerouslySetInnerHTML={{ __html: result }} />
 }
 
 function readPersistedHomeState(): PersistedHomeState | null {
@@ -705,7 +696,7 @@ function Home() {
                     ) : null}
                     <button
                       aria-label="Edit URL"
-                      className="inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-white/40 px-2.5 font-mono text-[0.7rem] uppercase tracking-[0.06em] text-ink-soft transition-[border-color,background,color] duration-[180ms] ease-out hover:border-line-strong hover:bg-white/60 hover:text-ink max-[720px]:sr-only"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-white/40 px-2.5 font-mono text-[0.7rem] uppercase tracking-[0.06em] text-ink-soft transition-[border-color,background,color] duration-[180ms] ease-out hover:border-line-strong hover:bg-white/60 hover:text-ink max-[720px]:hidden"
                       onClick={handleEditUrl}
                     >
                       <svg aria-hidden="true" className="h-3.5 w-3.5" viewBox="0 0 24 24">
@@ -715,6 +706,18 @@ function Home() {
                         />
                       </svg>
                       Edit URL
+                    </button>
+                    <button
+                      aria-label="Edit URL"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-line bg-white/46 text-ink-soft transition-[border-color,background,color,transform] duration-[180ms] ease-out hover:-translate-y-px hover:border-line-strong hover:bg-white/68 hover:text-ink min-[721px]:hidden"
+                      onClick={handleEditUrl}
+                    >
+                      <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+                        <path
+                          d="M15 18l-6-6 6-6M19 12H9"
+                          className="fill-none stroke-current stroke-[1.8] stroke-linecap-round stroke-linejoin-round"
+                        />
+                      </svg>
                     </button>
                   </div>
 
@@ -831,46 +834,32 @@ function Home() {
 
               {isRenderedPreview && !isPlainText ? (
                 <article
-                  className="output-surface markdown-preview grid h-full gap-4 leading-[1.68] text-ink max-[720px]:gap-3 max-[720px]:text-[0.95rem]"
-                  data-debug-md-length={deferredMarkdown.length}
-                  data-debug-md-has-table={deferredMarkdown.includes('|') ? 'yes' : 'no'}
+                  className="output-surface markdown-preview h-full leading-[1.68] text-ink max-[720px]:text-[0.95rem]"
                   ref={(node) => {
                     outputBodyRef.current = node
                   }}
                   tabIndex={0}
                 >
-                  <div id="debug-table-check" style={{ display: 'none' }}>
-                    TABLE_CHECK_START
-                    {deferredMarkdown.includes('|') ? 'HAS_PIPE' : 'NO_PIPE'}
-                    {deferredMarkdown.includes('---') ? 'HAS_DASHES' : 'NO_DASHES'}
-                    TABLE_CHECK_END
-                  </div>
                   {previewSegments.map((segment, index) => {
                     if (segment.kind === 'table') {
+                      const tableMd = [
+                        `| ${segment.headers.join(' | ')} |`,
+                        `| ${segment.headers.map(() => '---').join(' | ')} |`,
+                        ...segment.rows.map((row) => `| ${row.join(' | ')} |`),
+                      ].join('\n')
+
                       return (
                         <div className="table-scroll-wrapper" key={`table-${index}`}>
-                          <table>
-                            <thead>
-                              <tr>
-                                {segment.headers.map((cell, headerIndex) => (
-                                  <th key={`table-${index}-head-${headerIndex}`}>
-                                    {renderInlineCell(cell)}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {segment.rows.map((row, rowIndex) => (
-                                <tr key={`table-${index}-row-${rowIndex}`}>
-                                  {segment.headers.map((_, cellIndex) => (
-                                    <td key={`table-${index}-row-${rowIndex}-cell-${cellIndex}`}>
-                                      {renderInlineCell(row[cellIndex] ?? '')}
-                                    </td>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              table: ({ node: _node, ...props }) => (
+                                <table {...props} />
+                              ),
+                            }}
+                          >
+                            {tableMd}
+                          </ReactMarkdown>
                         </div>
                       )
                     }
