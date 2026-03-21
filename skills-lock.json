@@ -6,6 +6,11 @@
       "sourceType": "github",
       "computedHash": "c591208a052cc9f7deb77be1183e4627daf54dbf575ea2653f519f29fe3bd4c8"
     },
+    "baoyu-format-markdown": {
+      "source": "jimliu/baoyu-skills",
+      "sourceType": "github",
+      "computedHash": "dee3e4a2ad07f802475ccab941760997b958475e7672af408acf9d0929a01b80"
+    },
     "frontend-design": {
       "source": "anthropics/skills",
       "sourceType": "github",
