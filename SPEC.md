@@ -7,6 +7,8 @@ deterministic Markdown document.
 
 The tool exists to make shared conversations portable, readable in
 plain text, easy to version-control, and suitable for downstream processing.
+The current provider set covers ChatGPT, Claude, Copilot, Gemini,
+and Grok public share URLs.
 
 ## 2. Goal
 
@@ -35,9 +37,11 @@ Initial support targets public share URLs in canonical forms such as:
 
 - `https://chatgpt.com/share/<id>`
 - `https://chat.openai.com/share/<id>`
+- `https://copilot.microsoft.com/shares/<id>`
 - `https://gemini.google.com/share/<id>`
 - `https://g.co/gemini/share/<id>`
 - `https://claude.ai/share/<id>`
+- `https://grok.com/share/<id>`
 
 The implementation should also tolerate redirects between supported
 share domains.

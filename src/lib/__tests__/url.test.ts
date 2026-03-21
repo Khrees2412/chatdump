@@ -37,4 +37,30 @@ describe('normalizeShareUrl', () => {
       'https://claude.ai/share/51c6593c-c94b-4708-ba87-92e60b693f7b',
     )
   })
+
+  test('canonicalizes Copilot share URLs', () => {
+    const normalized = normalizeShareUrl(
+      'https://copilot.microsoft.com/shares/RPq5nxaEsHmgN8dK842Wq?ref=share',
+    )
+
+    expect(normalized.provider).toBe('copilot')
+    expect(normalized.shareId).toBe('RPq5nxaEsHmgN8dK842Wq')
+    expect(normalized.url.toString()).toBe(
+      'https://copilot.microsoft.com/shares/RPq5nxaEsHmgN8dK842Wq',
+    )
+  })
+
+  test('canonicalizes Grok share URLs', () => {
+    const normalized = normalizeShareUrl(
+      'https://grok.com/share/c2hhcmQtNQ_f461c973-f826-418e-9e7e-8097b676b357?rid=test#copy',
+    )
+
+    expect(normalized.provider).toBe('grok')
+    expect(normalized.shareId).toBe(
+      'c2hhcmQtNQ_f461c973-f826-418e-9e7e-8097b676b357',
+    )
+    expect(normalized.url.toString()).toBe(
+      'https://grok.com/share/c2hhcmQtNQ_f461c973-f826-418e-9e7e-8097b676b357',
+    )
+  })
 })

@@ -47,6 +47,8 @@ describe('handlePrivateProviderHealthRequest', () => {
       [PROVIDER_HEALTH_TOKEN_ENV_NAME]: 'top-secret',
       [PROVIDER_HEALTH_URL_ENV_NAMES.chatgpt]: 'https://chatgpt.com/share/example',
       [PROVIDER_HEALTH_URL_ENV_NAMES.claude]: 'https://claude.ai/share/example',
+      [PROVIDER_HEALTH_URL_ENV_NAMES.copilot]:
+        'https://copilot.microsoft.com/shares/example',
     }
     const request = new Request(healthUrl, {
       headers: {
@@ -54,7 +56,14 @@ describe('handlePrivateProviderHealthRequest', () => {
       },
     })
 
-    const probeProvider = async (provider: 'chatgpt' | 'claude' | 'gemini') => {
+    const probeProvider = async (
+      provider:
+        | 'chatgpt'
+        | 'claude'
+        | 'copilot'
+        | 'gemini'
+        | 'grok',
+    ) => {
       probeCalls += 1
 
       if (provider === 'claude') {
@@ -79,13 +88,21 @@ describe('handlePrivateProviderHealthRequest', () => {
     expect(firstResponse.status).toBe(200)
     expect(firstBody.cached).toBe(false)
     expect(firstBody.ok).toBe(false)
-    expect(firstBody.requestedProviders).toEqual(['chatgpt', 'claude', 'gemini'])
+    expect(firstBody.requestedProviders).toEqual([
+      'chatgpt',
+      'claude',
+      'copilot',
+      'gemini',
+      'grok',
+    ])
     expect(firstBody.providers.chatgpt.status).toBe('passing')
     expect(firstBody.providers.chatgpt.warningCount).toBe(1)
     expect(firstBody.providers.claude.status).toBe('failing')
     expect(firstBody.providers.claude.error).toContain('blocked by upstream challenge')
+    expect(firstBody.providers.copilot.status).toBe('passing')
     expect(firstBody.providers.gemini.status).toBe('unconfigured')
-    expect(probeCalls).toBe(2)
+    expect(firstBody.providers.grok.status).toBe('unconfigured')
+    expect(probeCalls).toBe(3)
 
     now += 10
 
@@ -98,7 +115,7 @@ describe('handlePrivateProviderHealthRequest', () => {
 
     expect(secondBody.cached).toBe(true)
     expect(secondBody.providers.claude.status).toBe('failing')
-    expect(probeCalls).toBe(2)
+    expect(probeCalls).toBe(3)
   })
 
   test('supports provider filtering and a fresh override', async () => {

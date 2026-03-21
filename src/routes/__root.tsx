@@ -10,7 +10,7 @@ import '../styles.css'
 
 const SITE_TITLE = 'chatdump | Public Share Link to Markdown'
 const SITE_DESCRIPTION =
-  'Convert public share links into clean, deterministic Markdown you can review, copy, and reuse.'
+  'Convert ChatGPT, Claude, Copilot, Gemini, and Grok share links into clean, deterministic Markdown.'
 const SITE_URL = 'https://chatdump.vercel.app'
 const SOCIAL_IMAGE = `${SITE_URL}/social-card.svg`
 
