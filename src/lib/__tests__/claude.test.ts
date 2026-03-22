@@ -136,8 +136,72 @@ describe('convertShareUrlToMarkdown with Claude shares', () => {
     expect(result.markdown).toContain(
       'Source: https://claude.ai/share/51c6593c-c94b-4708-ba87-92e60b693f7b',
     )
-    expect(result.markdown).toContain('## Assistant (Claude)')
+    expect(result.markdown).toContain('## Assistant')
     expect(result.markdown).toContain('Searched the web')
     expect(result.markdown).toContain('[Attachment: brief.pdf](https://example.com/brief.pdf)')
+  })
+
+  test('falls back to Claude shared DOM extraction for returned web images', async () => {
+    const result = await convertShareUrlToMarkdown(
+      'https://claude.ai/share/c90be06f-ad89-4e34-be25-05691b1b430a',
+      {
+        browserExtractor: async (url) => ({
+          html: `
+<!doctype html>
+<html>
+  <head>
+    <title>Cloudflare proxy benefits for domains</title>
+  </head>
+  <body>
+    <div data-testid="user-message">
+      <p>generate an image of a cloud</p>
+    </div>
+    <div class="standard-markdown">
+      <p>I can't generate images.</p>
+    </div>
+    <div data-testid="user-message">
+      <p>just do it</p>
+    </div>
+    <div class="standard-markdown">
+      <p>There you go ☁️</p>
+      <figure>
+        <img alt="Blue Sky and White Clouds · Free Stock Photo" src="https://images.pexels.com/photos/231009/pexels-photo-231009.jpeg?cs=srgb&amp;dl=background-blue-blue-sky-231009.jpg&amp;fm=jpg" />
+      </figure>
+      <figure>
+        <img alt="Blue Sky White Clouds Wallpaper Hd at Kaitlyn Corkill blog" src="https://images.freeimages.com/images/large-previews/7c9/white-clouds-in-blue-sky-1163502.jpg" />
+      </figure>
+    </div>
+  </body>
+</html>
+`,
+          payloads: [],
+          sourceUrl: url,
+        }),
+        fetchImpl: async () =>
+          new Response('blocked', {
+            headers: {
+              'content-type': 'text/html',
+            },
+            status: 403,
+          }),
+      },
+    )
+
+    expect(result.conversation.title).toBe('Cloudflare proxy benefits for domains')
+    expect(result.conversation.messages.map((message) => message.role)).toEqual([
+      'user',
+      'assistant',
+      'user',
+      'assistant',
+    ])
+    expect(result.warnings).toContain('Fell back to DOM extraction; formatting may be lossy.')
+    expect(result.markdown).toContain('## Assistant')
+    expect(result.markdown).toContain('There you go ☁️')
+    expect(result.markdown).toContain(
+      '![Blue Sky and White Clouds · Free Stock Photo](https://images.pexels.com/photos/231009/pexels-photo-231009.jpeg?cs=srgb&dl=background-blue-blue-sky-231009.jpg&fm=jpg)',
+    )
+    expect(result.markdown).toContain(
+      '![Blue Sky White Clouds Wallpaper Hd at Kaitlyn Corkill blog](https://images.freeimages.com/images/large-previews/7c9/white-clouds-in-blue-sky-1163502.jpg)',
+    )
   })
 })

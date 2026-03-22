@@ -1,6 +1,9 @@
 const GEMINI_CONVERSATION_RPC_ID = 'ujx1Bf'
 const GEMINI_DEFAULT_AUTHOR = 'Gemini'
 const GEMINI_DEFAULT_TITLE = 'Gemini Conversation'
+const GEMINI_IMAGE_GENERATION_HOST = 'googleusercontent.com'
+const GEMINI_IMAGE_GENERATION_PLACEHOLDER_PATH = '/image_generation_content/'
+const GEMINI_IMAGE_GENERATION_ASSET_PATH = '/gg/'
 
 export function isGeminiConversationResponseUrl(rawUrl: string): boolean {
   try {
@@ -97,17 +100,35 @@ function parseGeminiConversationPayload(payloadText: unknown): Record<string, un
     }
 
     const assistantText = readGeminiAssistantText(turn[3])
+    const assistantImageContext = collectGeminiGeneratedImages(turn[3])
+    const assistantParts = compactGeminiAssistantParts(
+      assistantText,
+      assistantImageContext.urls,
+      assistantImageContext.placeholderCount,
+    )
 
-    if (assistantText) {
-      messages.push({
+    if (assistantParts.length > 0) {
+      const message: Record<string, unknown> = {
         author: {
           name: modelName,
           role: 'assistant',
         },
         created_at: turnCreatedAt,
         role: 'assistant',
-        text: assistantText,
-      })
+      }
+
+      if (
+        assistantParts.length === 1 &&
+        typeof assistantParts[0] === 'string'
+      ) {
+        message.text = assistantParts[0]
+      } else {
+        message.content = {
+          parts: assistantParts,
+        }
+      }
+
+      messages.push(message)
     }
   }
 
@@ -147,6 +168,144 @@ function readGeminiUserText(candidate: unknown): string | undefined {
 
 function readGeminiAssistantText(candidate: unknown): string | undefined {
   return readString(readPath(candidate, [0, 0, 1, 0]))
+}
+
+function collectGeminiGeneratedImages(candidate: unknown): {
+  placeholderCount: number
+  urls: string[]
+} {
+  const urls = new Set<string>()
+  const placeholderUrls = new Set<string>()
+  const queue: unknown[] = [candidate]
+
+  while (queue.length > 0) {
+    const current = queue.shift()
+
+    if (typeof current === 'string') {
+      const normalized = normalizeGeminiGeneratedImageUrl(current)
+
+      if (normalized) {
+        urls.add(normalized)
+
+        if (isGeminiPlaceholderImageUrl(normalized)) {
+          placeholderUrls.add(normalized)
+        }
+      }
+      continue
+    }
+
+    if (Array.isArray(current)) {
+      queue.push(...current)
+      continue
+    }
+
+    if (current && typeof current === 'object') {
+      queue.push(...Object.values(current))
+    }
+  }
+
+  return {
+    placeholderCount: placeholderUrls.size,
+    urls: [...urls],
+  }
+}
+
+function compactGeminiAssistantParts(
+  text: string | undefined,
+  images: string[],
+  placeholderCount = 0,
+): unknown[] {
+  const preferredImages = preferRenderableGeminiImages(images, placeholderCount)
+  const parts: unknown[] = []
+
+  if (text && !normalizeGeminiGeneratedImageUrl(text)) {
+    parts.push(text)
+  }
+
+  for (const [index, url] of preferredImages.entries()) {
+    parts.push({
+      content_type: 'image',
+      label:
+        preferredImages.length > 1
+          ? `Generated image ${index + 1}`
+          : 'Generated image',
+      url,
+    })
+  }
+
+  return parts
+}
+
+function preferRenderableGeminiImages(
+  images: string[],
+  placeholderCount: number,
+): string[] {
+  const renderableAssets = images.filter((url) => isGeminiRenderableImageUrl(url))
+
+  if (renderableAssets.length === 0) {
+    return images
+  }
+
+  if (placeholderCount > 0) {
+    return renderableAssets.slice(0, placeholderCount)
+  }
+
+  return renderableAssets
+}
+
+function normalizeGeminiGeneratedImageUrl(value: string): string | undefined {
+  const trimmed = value.trim()
+
+  if (!trimmed) {
+    return undefined
+  }
+
+  try {
+    const url = new URL(trimmed)
+
+    if (
+      !url.hostname.endsWith(GEMINI_IMAGE_GENERATION_HOST) ||
+      !isGeminiImagePath(url.pathname)
+    ) {
+      return undefined
+    }
+
+    url.protocol = 'https:'
+    return url.toString()
+  } catch {
+    return undefined
+  }
+}
+
+function isGeminiImagePath(pathname: string): boolean {
+  return (
+    pathname.startsWith(GEMINI_IMAGE_GENERATION_PLACEHOLDER_PATH) ||
+    pathname.startsWith(GEMINI_IMAGE_GENERATION_ASSET_PATH)
+  )
+}
+
+function isGeminiRenderableImageUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return (
+      url.hostname.endsWith(GEMINI_IMAGE_GENERATION_HOST) &&
+      url.pathname.startsWith(GEMINI_IMAGE_GENERATION_ASSET_PATH)
+    )
+  } catch {
+    return false
+  }
+}
+
+function isGeminiPlaceholderImageUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return (
+      url.hostname.endsWith(GEMINI_IMAGE_GENERATION_HOST) &&
+      url.pathname.startsWith(GEMINI_IMAGE_GENERATION_PLACEHOLDER_PATH)
+    )
+  } catch {
+    return false
+  }
 }
 
 function readPath(value: unknown, path: number[]): unknown {

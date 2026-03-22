@@ -129,6 +129,134 @@ const structuredHtmlWithSystem = `
 </html>
 `
 
+const structuredHtmlWithImage = `
+<!doctype html>
+<html>
+  <head>
+    <title>Image Share - ChatGPT</title>
+    <script id="__NEXT_DATA__" type="application/json">
+      {
+        "props": {
+          "pageProps": {
+            "shareData": {
+              "conversation_id": "conv_image",
+              "title": "Image Share",
+              "mapping": {
+                "1": {
+                  "id": "1",
+                  "children": ["2"],
+                  "message": {
+                    "id": "m1",
+                    "author": { "role": "user", "name": "User" },
+                    "create_time": 1700000000,
+                    "content": {
+                      "content_type": "text",
+                      "parts": ["Show me a generated image."]
+                    }
+                  }
+                },
+                "2": {
+                  "id": "2",
+                  "parent": "1",
+                  "children": [],
+                  "message": {
+                    "id": "m2",
+                    "author": { "role": "assistant", "name": "GPT-4o" },
+                    "create_time": 1700000005,
+                    "content": {
+                      "content_type": "text",
+                      "parts": [
+                        "Here is the image.",
+                        {
+                          "content_type": "image_asset_pointer",
+                          "asset_pointer": "file-service://file-123",
+                          "metadata": {
+                            "image_url": "https://files.oaiusercontent.com/file-123/generated.png"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    </script>
+  </head>
+  <body></body>
+</html>
+`
+
+const structuredHtmlWithDomImage = `
+<!doctype html>
+<html>
+  <head>
+    <title>Image Share - ChatGPT</title>
+    <script id="__NEXT_DATA__" type="application/json">
+      {
+        "props": {
+          "pageProps": {
+            "shareData": {
+              "conversation_id": "conv_image_dom",
+              "title": "Image Share",
+              "mapping": {
+                "1": {
+                  "id": "1",
+                  "children": ["2"],
+                  "message": {
+                    "id": "m1",
+                    "author": { "role": "user", "name": "User" },
+                    "create_time": 1700000000,
+                    "content": {
+                      "content_type": "text",
+                      "parts": ["Generate this image."]
+                    }
+                  }
+                },
+                "2": {
+                  "id": "2",
+                  "parent": "1",
+                  "children": [],
+                  "message": {
+                    "id": "m2",
+                    "author": { "role": "assistant", "name": "GPT-4o" },
+                    "create_time": 1700000005,
+                    "content": {
+                      "content_type": "text",
+                      "parts": [
+                        "Generated image 1",
+                        { "content_type": "image_asset_pointer", "asset_pointer": "file-service://file-1", "name": "Generated image 1" },
+                        "Generated image 2",
+                        { "content_type": "image_asset_pointer", "asset_pointer": "file-service://file-2", "name": "Generated image 2" }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <main>
+      <article data-message-author-role="user">
+        <p>Generate this image.</p>
+      </article>
+      <article data-message-author-role="assistant">
+        <p>Generated image 1</p>
+        <img alt="Generated image 1" src="https://files.oaiusercontent.com/file-1/generated-1.png" />
+        <p>Generated image 2</p>
+        <img alt="Generated image 2" src="https://files.oaiusercontent.com/file-2/generated-2.png" />
+      </article>
+    </main>
+  </body>
+</html>
+`
+
 const domFallbackHtml = `
 <!doctype html>
 <html>
@@ -201,8 +329,8 @@ const reactRouterHydrationHtml = `
   <body>
     <script>
       window.__staticRouterHydrationData = JSON.parse(${JSON.stringify(
-        JSON.stringify(reactRouterHydrationPayload),
-      )});
+  JSON.stringify(reactRouterHydrationPayload),
+)});
       window.__reactRouterDataRouter = { state: window.__staticRouterHydrationData };
     </script>
   </body>
@@ -286,6 +414,43 @@ describe('extractConversationFromHtml', () => {
     expect(conversation.messages[1]?.blocks[0]).toEqual({
       kind: 'text',
       text: 'It is embedded in the React Router loader response.',
+    })
+  })
+
+  test('extracts image blocks from structured ChatGPT message parts', () => {
+    const { conversation, warnings } = extractConversationFromHtml(
+      structuredHtmlWithImage,
+      'https://chatgpt.com/share/example',
+    )
+
+    expect(warnings).toEqual([])
+    expect(conversation.messages).toHaveLength(2)
+    expect(conversation.messages[1]?.blocks).toContainEqual({
+      alt: 'Generated image',
+      kind: 'image',
+      label: 'Generated image',
+      url: 'https://files.oaiusercontent.com/file-123/generated.png',
+    })
+  })
+
+  test('fills missing structured ChatGPT image URLs from DOM images', () => {
+    const { conversation, warnings } = extractConversationFromHtml(
+      structuredHtmlWithDomImage,
+      'https://chatgpt.com/share/example',
+    )
+
+    expect(warnings).toEqual([])
+    expect(conversation.messages[1]?.blocks).toContainEqual({
+      alt: 'Generated image 1',
+      kind: 'image',
+      label: 'Generated image 1',
+      url: 'https://files.oaiusercontent.com/file-1/generated-1.png',
+    })
+    expect(conversation.messages[1]?.blocks).toContainEqual({
+      alt: 'Generated image 2',
+      kind: 'image',
+      label: 'Generated image 2',
+      url: 'https://files.oaiusercontent.com/file-2/generated-2.png',
     })
   })
 
@@ -568,5 +733,75 @@ describe('renderConversationToMarkdown', () => {
     expect(markdown).toContain('## System')
     expect(markdown).toContain('Internal instruction')
     expect(markdown).toContain('## User')
+  })
+
+  test('renders image blocks as markdown images', () => {
+    const markdown = renderConversationToMarkdown(
+      {
+        messages: [
+          {
+            authorName: 'GPT-4o',
+            blocks: [
+              {
+                alt: 'Generated image',
+                kind: 'image',
+                label: 'Generated image',
+                url: 'https://files.oaiusercontent.com/file-123/generated.png',
+              },
+            ],
+            id: 'assistant-1',
+            role: 'assistant',
+          },
+        ],
+        sourceUrl: 'https://chatgpt.com/share/example',
+        title: 'Image Chat',
+      },
+      {
+        exportedAt: new Date('2026-03-20T00:00:00.000Z'),
+      },
+    )
+
+    expect(markdown).toContain(
+      '![Generated image](https://files.oaiusercontent.com/file-123/generated.png)',
+    )
+  })
+
+  test('resolves relative image and attachment URLs against the share URL', () => {
+    const markdown = renderConversationToMarkdown(
+      {
+        messages: [
+          {
+            authorName: 'Grok',
+            blocks: [
+              {
+                alt: 'Generated image 1',
+                kind: 'image',
+                label: 'Generated image 1',
+                url: 'users/795f19db-cef1-410d-bbb5-ee64cb944e89/generated/bcc2a557-a1cb-4829-a6ee-5e1c89a6734f/image.jpg',
+              },
+              {
+                kind: 'file',
+                name: 'notes.txt',
+                url: '/downloads/notes.txt',
+              },
+            ],
+            id: 'assistant-1',
+            role: 'assistant',
+          },
+        ],
+        sourceUrl: 'https://grok.com/share/example',
+        title: 'Relative Image Chat',
+      },
+      {
+        exportedAt: new Date('2026-03-20T00:00:00.000Z'),
+      },
+    )
+
+    expect(markdown).toContain(
+      '![Generated image 1](https://grok.com/users/795f19db-cef1-410d-bbb5-ee64cb944e89/generated/bcc2a557-a1cb-4829-a6ee-5e1c89a6734f/image.jpg)',
+    )
+    expect(markdown).toContain(
+      '[Attachment: notes.txt](https://grok.com/downloads/notes.txt)',
+    )
   })
 })
