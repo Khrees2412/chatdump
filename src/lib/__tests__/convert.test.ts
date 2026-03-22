@@ -329,8 +329,8 @@ const reactRouterHydrationHtml = `
   <body>
     <script>
       window.__staticRouterHydrationData = JSON.parse(${JSON.stringify(
-        JSON.stringify(reactRouterHydrationPayload),
-      )});
+  JSON.stringify(reactRouterHydrationPayload),
+)});
       window.__reactRouterDataRouter = { state: window.__staticRouterHydrationData };
     </script>
   </body>
