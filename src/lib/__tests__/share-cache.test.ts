@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   SHARE_CACHE_TTL_MS,
   clearShareConversationCache,
+  deleteShareConversationCacheEntry,
   getOrCreateCachedShareConversation,
 } from '../share-cache'
 import type { NormalizedConversation } from '../types'
@@ -189,5 +190,34 @@ describe('getOrCreateCachedShareConversation', () => {
     expect(first.conversation.title).toBe('Gemini Cached Result')
     expect(second.conversation.title).toBe('Gemini Cached Result')
     expect(second.warnings).toEqual([])
+  })
+
+  test('removes a cached entry when the matching URL is deleted', async () => {
+    clearShareConversationCache()
+
+    let loaderCalls = 0
+
+    await getOrCreateCachedShareConversation(shareUrl, async () => {
+      loaderCalls += 1
+
+      return {
+        conversation: makeConversation('Initial'),
+        warnings: [],
+      }
+    })
+
+    deleteShareConversationCacheEntry(`${shareUrl}?src=history`)
+
+    const refreshed = await getOrCreateCachedShareConversation(shareUrl, async () => {
+      loaderCalls += 1
+
+      return {
+        conversation: makeConversation('Reloaded'),
+        warnings: [],
+      }
+    })
+
+    expect(loaderCalls).toBe(2)
+    expect(refreshed.conversation.title).toBe('Reloaded')
   })
 })

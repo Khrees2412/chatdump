@@ -9,6 +9,7 @@ import { Button } from '../components/ui/button'
 import { cn } from '../lib/cn'
 import { splitMarkdownForPreview } from '../lib/markdown-preview'
 import { stripMarkdown } from '../lib/markdown-utils'
+import { deleteShareConversationCacheEntry } from '../lib/share-cache'
 
 const RECENT_URLS_KEY = 'chatdump.recent-urls.v1'
 const MAX_RECENT_URLS = 10
@@ -282,6 +283,7 @@ function Home() {
   function handleRemoveRecentUrl(urlToRemove: string, event: React.MouseEvent) {
     event.stopPropagation()
     removeRecentUrl(urlToRemove)
+    deleteShareConversationCacheEntry(urlToRemove)
     setRecentUrls(getRecentUrls())
   }
 
