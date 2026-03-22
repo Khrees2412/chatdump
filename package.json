@@ -19,6 +19,7 @@
     "@sparticuz/chromium": "latest",
     "@tanstack/react-router": "latest",
     "@tanstack/react-start": "latest",
+    "@vercel/analytics": "^2.0.1",
     "cheerio": "latest",
     "chromium-bidi": "latest",
     "highlight.js": "^11.11.1",
