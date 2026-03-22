@@ -81,9 +81,7 @@ body {
 .app-frame {
   min-height: 100dvh;
   padding:
-    max(1rem, env(safe-area-inset-top))
-    clamp(0.75rem, 3vw, 1.25rem)
-    max(1rem, env(safe-area-inset-bottom));
+    max(1rem, env(safe-area-inset-top)) clamp(0.75rem, 3vw, 1.25rem) max(1rem, env(safe-area-inset-bottom));
 }
 
 body::before,
@@ -157,12 +155,28 @@ body::after {
     0 0 0 4px var(--focus);
 }
 
-.markdown-preview > * {
+.markdown-preview>* {
   margin: 0;
 }
 
 .markdown-preview {
   overflow-wrap: anywhere;
+}
+
+.markdown-preview>*+* {
+  margin-top: 1rem;
+}
+
+.markdown-preview>.table-scroll-wrapper+*,
+.markdown-preview>*+.table-scroll-wrapper {
+  margin-top: 1rem;
+}
+
+.markdown-preview>pre+*,
+.markdown-preview>.code-block-wrapper+*,
+.markdown-preview>*+pre,
+.markdown-preview>*+.code-block-wrapper {
+  margin-top: 1.25rem;
 }
 
 .markdown-preview strong {
@@ -215,18 +229,24 @@ body::after {
 .markdown-preview p,
 .markdown-preview ul,
 .markdown-preview ol,
-.markdown-preview blockquote,
+.markdown-preview blockquote {
+  margin: 0;
+}
+
 .markdown-preview pre,
 .markdown-preview table {
   margin: 0;
 }
 
+.markdown-preview p+p,
+.markdown-preview ul+p,
+.markdown-preview ol+p {
+  margin-top: 0.75rem;
+}
+
 .markdown-preview ul,
 .markdown-preview ol {
-  display: grid;
-  gap: 0.45rem;
   padding-left: 1.25rem;
-  list-style-position: outside;
 }
 
 .markdown-preview ul {
@@ -235,17 +255,10 @@ body::after {
 
 .markdown-preview ol {
   list-style-type: decimal;
+  list-style-position: outside;
 }
 
-.markdown-preview ul ul,
-.markdown-preview ul ol,
-.markdown-preview ol ul,
-.markdown-preview ol ol {
-  gap: 0.3rem;
-  margin-top: 0.3rem;
-}
-
-.markdown-preview li > p {
+.markdown-preview li>p {
   margin: 0;
 }
 
@@ -257,7 +270,7 @@ body::after {
   padding: 0.9rem 1rem;
 }
 
-.markdown-preview blockquote > * + * {
+.markdown-preview blockquote>*+* {
   margin-top: 0.6rem;
 }
 
@@ -297,6 +310,7 @@ body::after {
     monospace;
   font-size: 0.84rem;
   line-height: 1.7;
+  margin: 1rem 0;
   overflow-x: auto;
   /* Wrap long lines instead of forcing horizontal scroll */
   white-space: pre-wrap;
@@ -313,6 +327,7 @@ body::after {
 }
 
 .markdown-preview .code-block-wrapper {
+  margin: 1rem 0;
   position: relative;
 }
 
@@ -348,11 +363,8 @@ body::after {
   border-radius: 0.75rem;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.28);
-  display: block;
   overflow-x: auto;
-  overscroll-behavior-x: contain;
   padding: 0;
-  width: 100%;
 }
 
 .markdown-preview .table-scroll-wrapper table {
@@ -365,6 +377,16 @@ body::after {
 .markdown-preview .table-scroll-wrapper th,
 .markdown-preview .table-scroll-wrapper td {
   border-color: var(--line);
+  color: var(--ink) !important;
+  font-size: inherit !important;
+  visibility: visible !important;
+}
+
+.markdown-preview .table-scroll-wrapper td span {
+  color: var(--ink) !important;
+  display: block !important;
+  visibility: visible !important;
+  min-height: 1em !important;
 }
 
 .markdown-preview th,
@@ -491,6 +513,7 @@ body::after {
     min-width: 7rem;
     padding: 0.58rem 0.62rem;
   }
+
 }
 
 @media (min-width: 721px) {
@@ -505,6 +528,6 @@ body::after {
   }
 
   to {
-    transform: translateX(100%);
+    transform: translateX(400%);
   }
 }

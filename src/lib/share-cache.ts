@@ -56,6 +56,10 @@ export function clearShareConversationCache() {
   inFlightShareRequests.clear()
 }
 
+export function deleteShareConversationCacheEntry(rawUrl: string) {
+  shareConversationCache.delete(getShareCacheKey(rawUrl))
+}
+
 function getShareCacheKey(rawUrl: string): string {
   return validateShareUrl(rawUrl).toString()
 }

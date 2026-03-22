@@ -10,7 +10,7 @@ export type PreviewSegment =
     }
 
 const TABLE_ROW_RE = /^\s*\|.*\|\s*$/u
-const TABLE_SEPARATOR_RE = /^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*:?-{3,}:?\s*\|?\s*$/u
+const TABLE_SEPARATOR_RE = /^\s*\|[\s:|-]+\|[\s:|-]*\|?\s*$/u
 
 export function splitMarkdownForPreview(markdown: string): PreviewSegment[] {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n')

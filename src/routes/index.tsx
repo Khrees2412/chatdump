@@ -8,6 +8,11 @@ import { useDeferredValue, useEffect, useRef, useState, startTransition } from '
 import { Button } from '../components/ui/button'
 import { cn } from '../lib/cn'
 import { splitMarkdownForPreview } from '../lib/markdown-preview'
+import { stripMarkdown } from '../lib/markdown-utils'
+import { deleteShareConversationCacheEntry } from '../lib/share-cache'
+
+const RECENT_URLS_KEY = 'chatdump.recent-urls.v1'
+const MAX_RECENT_URLS = 10
 
 type ConvertInput = {
   url: string
@@ -26,6 +31,39 @@ type PersistedHomeState = {
   warnings: string[]
 }
 
+function getRecentUrls(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(RECENT_URLS_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((u): u is string => typeof u === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function addRecentUrl(url: string): void {
+  if (typeof window === 'undefined') return
+  try {
+    const recent = getRecentUrls().filter((u) => u !== url)
+    const updated = [url, ...recent].slice(0, MAX_RECENT_URLS)
+    window.localStorage.setItem(RECENT_URLS_KEY, JSON.stringify(updated))
+  } catch {
+    // Ignore storage failures
+  }
+}
+
+function removeRecentUrl(url: string): void {
+  if (typeof window === 'undefined') return
+  try {
+    const recent = getRecentUrls().filter((u) => u !== url)
+    window.localStorage.setItem(RECENT_URLS_KEY, JSON.stringify(recent))
+  } catch {
+    // Ignore storage failures
+  }
+}
+
 const monoCapsClass = 'font-mono uppercase tracking-[0.14em]'
 const persistedHomeStateKey = 'chatdump.home-state.v1'
 
@@ -36,23 +74,14 @@ function hasMarkdownTable(markdown: string): boolean {
 }
 
 function renderInlineCell(value: string): React.ReactNode {
-  const parts: React.ReactNode[] = []
-  const chunks = value.split(/(`[^`]*`)/g)
+  let result = value
 
-  for (const [index, chunk] of chunks.entries()) {
-    if (!chunk) {
-      continue
-    }
+  result = result.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+  result = result.replace(/\*([^*]+)\*/g, '<em>$1</em>')
+  result = result.replace(/`([^`]+)`/g, '<code>$1</code>')
+  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" rel="noreferrer" target="_blank">$1</a>')
 
-    if (chunk.startsWith('`') && chunk.endsWith('`') && chunk.length >= 2) {
-      parts.push(<code key={index}>{chunk.slice(1, -1)}</code>)
-      continue
-    }
-
-    parts.push(chunk)
-  }
-
-  return parts.length > 0 ? parts : value
+  return <span dangerouslySetInnerHTML={{ __html: result }} />
 }
 
 function readPersistedHomeState(): PersistedHomeState | null {
@@ -147,6 +176,8 @@ function Home() {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
   const [toasts, setToasts] = useState<Toast[]>([])
   const [hasHydratedState, setHasHydratedState] = useState(false)
+  const [isPlainText, setIsPlainText] = useState(false)
+  const [recentUrls, setRecentUrls] = useState<string[]>([])
   const urlInputRef = useRef<HTMLInputElement | null>(null)
   const outputSectionRef = useRef<HTMLElement | null>(null)
   const outputBodyRef = useRef<HTMLElement | null>(null)
@@ -174,6 +205,8 @@ function Home() {
         ? 'Copy failed'
       : 'Copy Markdown'
   const previewLabel = isRenderedPreview ? 'Show Markdown' : 'Show Preview'
+  const plainTextLabel = isPlainText ? 'Show Markdown' : 'Plain Text'
+  const displayMarkdown = isPlainText ? stripMarkdown(deferredMarkdown) : deferredMarkdown
 
   function removeToast(id: number) {
     const timeoutId = toastTimeoutsRef.current.get(id)
@@ -213,6 +246,8 @@ function Home() {
     setError(null)
     setCopyState('idle')
     clearToasts()
+    addRecentUrl(url)
+    setRecentUrls(getRecentUrls())
 
     startTransition(() => {
       convertShare({
@@ -245,6 +280,18 @@ function Home() {
     })
   }
 
+  function handleRemoveRecentUrl(urlToRemove: string, event: React.MouseEvent) {
+    event.stopPropagation()
+    removeRecentUrl(urlToRemove)
+    deleteShareConversationCacheEntry(urlToRemove)
+    setRecentUrls(getRecentUrls())
+  }
+
+  function handleSelectRecentUrl(recentUrl: string) {
+    setUrl(recentUrl)
+    urlInputRef.current?.focus()
+  }
+
   function handleEditUrl() {
     setMarkdown('')
     setWarnings([])
@@ -264,17 +311,33 @@ function Home() {
   }
 
   async function handleCopy() {
-    if (!deferredMarkdown) {
+    if (!displayMarkdown) {
       return
     }
 
     try {
-      await navigator.clipboard.writeText(deferredMarkdown)
+      await navigator.clipboard.writeText(displayMarkdown)
       setCopyState('copied')
       window.setTimeout(() => setCopyState('idle'), 1600)
     } catch {
       setCopyState('error')
     }
+  }
+
+  function handleDownload() {
+    if (!deferredMarkdown) {
+      return
+    }
+
+    const blob = new Blob([deferredMarkdown], { type: 'text/markdown' })
+    const urlBlob = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = urlBlob
+    a.download = 'conversation.md'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(urlBlob)
   }
 
   function handlePreview() {
@@ -317,6 +380,10 @@ function Home() {
       warnings,
     }
   }, [error, warnings])
+
+  useEffect(() => {
+    setRecentUrls(getRecentUrls())
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -549,6 +616,39 @@ function Home() {
                 </div>
               </form>
 
+              {recentUrls.length > 0 ? (
+                <div className="grid gap-2">
+                  <p className={cn(monoCapsClass, 'text-[0.72rem] text-ink-soft')}>
+                    Recent URLs
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {recentUrls.map((recentUrl) => (
+                      <button
+                        key={recentUrl}
+                        className="group relative inline-flex max-w-[20rem] items-center gap-1.5 rounded-full border border-line bg-white/40 px-3 py-1.5 font-mono text-[0.73rem] text-ink-soft transition-[border-color,background,color] duration-[180ms] ease-out hover:border-line-strong hover:bg-white/60 hover:text-ink"
+                        onClick={() => handleSelectRecentUrl(recentUrl)}
+                        type="button"
+                      >
+                        <svg aria-hidden="true" className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24">
+                          <path
+                            d="M14 5h5v5M10 14 19 5M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"
+                            className="fill-none stroke-current stroke-[1.8] stroke-linecap-round stroke-linejoin-round"
+                          />
+                        </svg>
+                        <span className="truncate">{recentUrl}</span>
+                        <span
+                          aria-label="Remove from recent"
+                          className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full border border-line bg-white text-[0.6rem] opacity-0 shadow-sm transition-opacity duration-[180ms] ease-out group-hover:opacity-100"
+                          onClick={(e) => handleRemoveRecentUrl(recentUrl, e)}
+                        >
+                          ×
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               {isPending ? (
                 <div className="h-[0.42rem] overflow-hidden rounded-full bg-[rgba(23,20,17,0.08)]" aria-label="Processing share link">
                   <div className="h-full w-[36%] animate-[slide_1.4s_ease-in-out_infinite] rounded-full bg-[linear-gradient(90deg,var(--brass),var(--brass-strong))]" />
@@ -596,98 +696,172 @@ function Home() {
                         {warningCount} warning{warningCount > 1 ? 's' : ''}
                       </span>
                     ) : null}
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 min-[721px]:flex min-[721px]:flex-wrap min-[721px]:justify-end">
-                    <Button
+                    <button
                       aria-label="Edit URL"
-                      className="max-[720px]:min-h-11 max-[720px]:w-11 max-[720px]:justify-center max-[720px]:gap-0 max-[720px]:px-0 max-[720px]:pl-0"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-white/40 px-2.5 font-mono text-[0.7rem] uppercase tracking-[0.06em] text-ink-soft transition-[border-color,background,color] duration-[180ms] ease-out hover:border-line-strong hover:bg-white/60 hover:text-ink max-[720px]:hidden"
                       onClick={handleEditUrl}
                     >
-                      <svg aria-hidden="true" className="h-[1.05rem] w-[1.05rem]" viewBox="0 0 24 24">
+                      <svg aria-hidden="true" className="h-3.5 w-3.5" viewBox="0 0 24 24">
                         <path
                           d="M19 12H5M11 6l-6 6 6 6"
                           className="fill-none stroke-current stroke-[1.8] stroke-linecap-round stroke-linejoin-round"
                         />
                       </svg>
-                      <span className="hidden min-[721px]:inline">Edit URL</span>
-                    </Button>
-
-                    <Button
-                      aria-label={previewLabel}
-                      aria-pressed={isRenderedPreview}
-                      className="max-[720px]:min-h-11 max-[720px]:w-11 max-[720px]:justify-center max-[720px]:gap-0 max-[720px]:px-0 max-[720px]:pl-0"
-                      pressed={isRenderedPreview}
-                      onClick={handlePreview}
+                      Edit URL
+                    </button>
+                    <button
+                      aria-label="Edit URL"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-line bg-white/46 text-ink-soft transition-[border-color,background,color,transform] duration-[180ms] ease-out hover:-translate-y-px hover:border-line-strong hover:bg-white/68 hover:text-ink min-[721px]:hidden"
+                      onClick={handleEditUrl}
                     >
-                      <svg aria-hidden="true" className="h-[1.05rem] w-[1.05rem]" viewBox="0 0 24 24">
+                      <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
                         <path
-                          d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6ZM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"
+                          d="M15 18l-6-6 6-6M19 12H9"
                           className="fill-none stroke-current stroke-[1.8] stroke-linecap-round stroke-linejoin-round"
                         />
                       </svg>
-                      <span className="hidden min-[721px]:inline">{previewLabel}</span>
-                    </Button>
+                    </button>
+                  </div>
 
-                    <Button
-                      aria-label={copyLabel}
-                      className="max-[720px]:min-h-11 max-[720px]:w-11 max-[720px]:justify-center max-[720px]:gap-0 max-[720px]:px-0 max-[720px]:pl-0"
-                      onClick={handleCopy}
-                    >
-                      <svg aria-hidden="true" className="h-[1.05rem] w-[1.05rem]" viewBox="0 0 24 24">
-                        <path
-                          d="M9 9h10v12H9zM5 3h10v4H9v10H5z"
-                          className="fill-none stroke-current stroke-[1.8] stroke-linecap-round stroke-linejoin-round"
-                        />
-                      </svg>
-                      <span className="hidden min-[721px]:inline">{copyLabel}</span>
-                    </Button>
+                  <div className="flex flex-wrap items-center justify-end gap-2 max-[720px]:justify-between">
+                    <div className="inline-flex rounded-full border border-line-strong bg-white/72 p-0.5 shadow-soft max-[720px]:order-2">
+                      <button
+                        aria-label="Markdown"
+                        aria-pressed={!isRenderedPreview && !isPlainText}
+                        className={cn(
+                          'inline-flex h-[2.6rem] items-center gap-1.5 rounded-l-full border border-transparent px-3 font-mono text-[0.72rem] uppercase tracking-[0.06em] transition-[background,color,box-shadow,border-color] duration-[180ms] ease-out',
+                          !isRenderedPreview && !isPlainText
+                            ? 'border-line bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_4px_12px_rgba(23,20,17,0.06)] text-ink'
+                            : 'text-ink-soft hover:text-ink',
+                        )}
+                        onClick={() => {
+                          setIsPlainText(false)
+                          if (isRenderedPreview) setOutputMode('markdown')
+                        }}
+                      >
+                        <svg aria-hidden="true" className="h-3.5 w-3.5" viewBox="0 0 24 24">
+                          <path
+                            d="M3 7h18M3 12h12M3 17h18"
+                            className="fill-none stroke-current stroke-[1.8] stroke-linecap-round"
+                          />
+                        </svg>
+                        <span className="hidden sm:inline">Markdown</span>
+                      </button>
+
+                      <button
+                        aria-label="Preview"
+                        aria-pressed={isRenderedPreview}
+                        className={cn(
+                          'inline-flex h-[2.6rem] items-center gap-1.5 border border-transparent px-3 font-mono text-[0.72rem] uppercase tracking-[0.06em] transition-[background,color,box-shadow,border-color] duration-[180ms] ease-out',
+                          isRenderedPreview
+                            ? 'border-line bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_4px_12px_rgba(23,20,17,0.06)] text-ink'
+                            : 'text-ink-soft hover:text-ink',
+                        )}
+                        onClick={() => {
+                          setIsPlainText(false)
+                          if (!isRenderedPreview) setOutputMode('preview')
+                        }}
+                      >
+                        <svg aria-hidden="true" className="h-3.5 w-3.5" viewBox="0 0 24 24">
+                          <path
+                            d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6ZM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"
+                            className="fill-none stroke-current stroke-[1.8] stroke-linecap-round stroke-linejoin-round"
+                          />
+                        </svg>
+                        <span className="hidden sm:inline">Preview</span>
+                      </button>
+
+                      <button
+                        aria-label="Plain text"
+                        aria-pressed={isPlainText}
+                        className={cn(
+                          'inline-flex h-[2.6rem] items-center gap-1.5 rounded-r-full border border-transparent px-3 font-mono text-[0.72rem] uppercase tracking-[0.06em] transition-[background,color,box-shadow,border-color] duration-[180ms] ease-out',
+                          isPlainText
+                            ? 'border-line bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_4px_12px_rgba(23,20,17,0.06)] text-ink'
+                            : 'text-ink-soft hover:text-ink',
+                        )}
+                        onClick={() => setIsPlainText((v) => !v)}
+                      >
+                        <svg aria-hidden="true" className="h-3.5 w-3.5" viewBox="0 0 24 24">
+                          <path
+                            d="M4 7V4h16v3M9 20h6M12 4v16"
+                            className="fill-none stroke-current stroke-[1.8] stroke-linecap-round stroke-linejoin-round"
+                          />
+                        </svg>
+                        <span className="hidden sm:inline">Plain</span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2 max-[720px]:order-1">
+                      <Button
+                        aria-label={copyLabel}
+                        className="max-[720px]:min-h-11 max-[720px]:w-11 max-[720px]:justify-center max-[720px]:gap-0 max-[720px]:px-0 max-[720px]:pl-0"
+                        onClick={handleCopy}
+                      >
+                        {copyState === 'copied' ? (
+                          <svg aria-hidden="true" className="h-[1.05rem] w-[1.05rem]" viewBox="0 0 24 24">
+                            <path
+                              d="M20 6L9 17l-5-5"
+                              className="fill-none stroke-current stroke-[2] stroke-linecap-round stroke-linejoin-round"
+                            />
+                          </svg>
+                        ) : (
+                          <svg aria-hidden="true" className="h-[1.05rem] w-[1.05rem]" viewBox="0 0 24 24">
+                            <path
+                              d="M9 9h10v12H9zM5 3h10v4H9v10H5z"
+                              className="fill-none stroke-current stroke-[1.8] stroke-linecap-round stroke-linejoin-round"
+                            />
+                          </svg>
+                        )}
+                        <span className="max-[720px]:hidden">{copyLabel}</span>
+                      </Button>
+
+                      <Button
+                        aria-label="Download .md"
+                        className="max-[720px]:min-h-11 max-[720px]:w-11 max-[720px]:justify-center max-[720px]:gap-0 max-[720px]:px-0 max-[720px]:pl-0"
+                        onClick={handleDownload}
+                      >
+                        <svg aria-hidden="true" className="h-[1.05rem] w-[1.05rem]" viewBox="0 0 24 24">
+                          <path
+                            d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"
+                            className="fill-none stroke-current stroke-[1.8] stroke-linecap-round stroke-linejoin-round"
+                          />
+                        </svg>
+                        <span className="max-[720px]:hidden">.md</span>
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {isRenderedPreview ? (
+              {isRenderedPreview && !isPlainText ? (
                 <article
-                  className="output-surface markdown-preview grid h-full gap-4 leading-[1.68] text-ink max-[720px]:gap-3 max-[720px]:text-[0.95rem]"
-                  data-debug-md-length={deferredMarkdown.length}
-                  data-debug-md-has-table={deferredMarkdown.includes('|') ? 'yes' : 'no'}
+                  className="output-surface markdown-preview h-full leading-[1.68] text-ink max-[720px]:text-[0.95rem]"
                   ref={(node) => {
                     outputBodyRef.current = node
                   }}
                   tabIndex={0}
                 >
-                  <div id="debug-table-check" style={{ display: 'none' }}>
-                    TABLE_CHECK_START
-                    {deferredMarkdown.includes('|') ? 'HAS_PIPE' : 'NO_PIPE'}
-                    {deferredMarkdown.includes('---') ? 'HAS_DASHES' : 'NO_DASHES'}
-                    TABLE_CHECK_END
-                  </div>
                   {previewSegments.map((segment, index) => {
                     if (segment.kind === 'table') {
+                      const tableMd = [
+                        `| ${segment.headers.join(' | ')} |`,
+                        `| ${segment.headers.map(() => '---').join(' | ')} |`,
+                        ...segment.rows.map((row) => `| ${row.join(' | ')} |`),
+                      ].join('\n')
+
                       return (
                         <div className="table-scroll-wrapper" key={`table-${index}`}>
-                          <table>
-                            <thead>
-                              <tr>
-                                {segment.headers.map((cell, headerIndex) => (
-                                  <th key={`table-${index}-head-${headerIndex}`}>
-                                    {renderInlineCell(cell)}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {segment.rows.map((row, rowIndex) => (
-                                <tr key={`table-${index}-row-${rowIndex}`}>
-                                  {segment.headers.map((_, cellIndex) => (
-                                    <td key={`table-${index}-row-${rowIndex}-cell-${cellIndex}`}>
-                                      {renderInlineCell(row[cellIndex] ?? '')}
-                                    </td>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              table: ({ node: _node, ...props }) => (
+                                <table {...props} />
+                              ),
+                            }}
+                          >
+                            {tableMd}
+                          </ReactMarkdown>
                         </div>
                       )
                     }
@@ -760,6 +934,16 @@ function Home() {
                     )
                   })}
                 </article>
+              ) : isPlainText ? (
+                <pre
+                  className="output-surface m-0 h-full whitespace-pre-wrap font-mono text-[0.92rem] leading-[1.72] text-ink max-[720px]:text-[0.84rem]"
+                  ref={(node) => {
+                    outputBodyRef.current = node
+                  }}
+                  tabIndex={0}
+                >
+                  {displayMarkdown}
+                </pre>
               ) : (
                 <pre
                   className="output-surface m-0 h-full whitespace-pre-wrap font-mono text-[0.92rem] leading-[1.72] text-ink max-[720px]:text-[0.84rem]"
