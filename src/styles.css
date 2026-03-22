@@ -413,8 +413,38 @@ body::after {
 
 .markdown-preview img {
   border-radius: 0.95rem;
-  display: block;
+  display: inline-block;
+  height: auto;
   max-width: 100%;
+  max-height: 60vh;
+  vertical-align: middle;
+}
+
+.markdown-preview .preview-image-wrapper {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: flex-start;
+}
+
+.markdown-preview p:has(> .preview-image-wrapper:only-child) {
+  display: inline;
+}
+
+.markdown-preview .preview-image-wrapper {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.markdown-preview .preview-image-link {
+  font-family:
+    'IBM Plex Mono',
+    'SFMono-Regular',
+    'Menlo',
+    monospace;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 /* ─── Syntax highlighting (highlight.js warm theme) ─────────────────────── */

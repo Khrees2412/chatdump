@@ -4,6 +4,7 @@ import { extractGeminiConversationPayloads } from '../gemini'
 import { clearShareConversationCache } from '../share-cache'
 
 type GeminiTurnFixture = {
+  assistantPayload?: unknown
   assistantText: string
   createdAt: [number, number]
   userText: string
@@ -34,7 +35,14 @@ function buildGeminiBatchedResponse(options: {
       [`conversation_${index + 1}`, `response_${index + 1}`],
       null,
       [[turn.userText]],
-      [[[`response_${index + 1}`, [turn.assistantText]]]],
+      [
+        [
+          [
+            `response_${index + 1}`,
+            turn.assistantPayload ?? [turn.assistantText],
+          ],
+        ],
+      ],
       turn.createdAt,
     ]),
     shareMetadata,
@@ -96,6 +104,98 @@ describe('extractGeminiConversationPayloads', () => {
       created_at: '2026-02-25T17:46:36.761Z',
       role: 'assistant',
       text: 'Use `COPY` for the write path.',
+    })
+  })
+
+  test('normalizes generated image URLs into image content parts', () => {
+    const payloads = extractGeminiConversationPayloads(
+      buildGeminiBatchedResponse({
+        shareId: 'ee5bab956b9f',
+        title: 'Generated CEO Portrait',
+        turns: [
+          {
+            assistantText: 'http://googleusercontent.com/image_generation_content/0',
+            createdAt: [1772028570, 583237000],
+            userText: 'generate an image of a ceo',
+          },
+        ],
+      }),
+    )
+
+    const [conversation] = payloads
+    const messages = Array.isArray(conversation?.messages) ? conversation.messages : []
+
+    expect(messages[1]?.content).toEqual({
+      parts: [
+        {
+          content_type: 'image',
+          label: 'Generated image',
+          url: 'https://googleusercontent.com/image_generation_content/0',
+        },
+      ],
+    })
+  })
+
+  test('prefers renderable Gemini image assets over placeholder image URLs', () => {
+    const payloads = extractGeminiConversationPayloads(
+      buildGeminiBatchedResponse({
+        shareId: 'e0342941181f',
+        title: 'generate an image of a ceo',
+        turns: [
+          {
+            assistantText: 'http://googleusercontent.com/image_generation_content/0',
+            assistantPayload: [
+              'http://googleusercontent.com/image_generation_content/0',
+              [
+                null,
+                null,
+                null,
+                [
+                  null,
+                  1,
+                  '1635124314996679824.png',
+                  'https://lh3.googleusercontent.com/gg/example-image-one=mp2',
+                  null,
+                  null,
+                  2,
+                  [1774189688, 660410121],
+                  null,
+                  'image/png',
+                ],
+                null,
+                null,
+                [
+                  null,
+                  1,
+                  '5559274685002010054.jpeg',
+                  'https://lh3.googleusercontent.com/gg/example-image-two=mp2',
+                  null,
+                  null,
+                  2,
+                  [1774189688, 660047290],
+                  null,
+                  'image/jpeg',
+                ],
+              ],
+            ],
+            createdAt: [1772028570, 583237000],
+            userText: 'generate an image of a ceo',
+          },
+        ],
+      }),
+    )
+
+    const [conversation] = payloads
+    const messages = Array.isArray(conversation?.messages) ? conversation.messages : []
+
+    expect(messages[1]?.content).toEqual({
+      parts: [
+        {
+          content_type: 'image',
+          label: 'Generated image',
+          url: 'https://lh3.googleusercontent.com/gg/example-image-one=mp2',
+        },
+      ],
     })
   })
 })
@@ -173,5 +273,105 @@ describe('convertShareUrlToMarkdown with Gemini shares', () => {
     )
     expect(result.markdown).toContain('## Assistant (Gemini Fast)')
     expect(result.markdown).toContain('Use `COPY` for the write path')
+  })
+
+  test('renders generated Gemini image URLs as markdown images', async () => {
+    const payloads = extractGeminiConversationPayloads(
+      buildGeminiBatchedResponse({
+        shareId: 'ee5bab956b9f',
+        title: 'Generated CEO Portrait',
+        turns: [
+          {
+            assistantText: 'http://googleusercontent.com/image_generation_content/0',
+            createdAt: [1772028570, 583237000],
+            userText: 'generate an image of a ceo',
+          },
+        ],
+      }),
+    )
+
+    const result = await convertShareUrlToMarkdown(
+      'https://gemini.google.com/share/ee5bab956b9f',
+      {
+        browserExtractor: async (url) => ({
+          payloads,
+          sourceUrl: url,
+        }),
+        fetchImpl: async () =>
+          new Response('<html><head><title>Gemini</title></head><body></body></html>', {
+            headers: {
+              'content-type': 'text/html',
+            },
+            status: 200,
+          }),
+      },
+    )
+
+    expect(result.markdown).toContain(
+      '![Generated image](https://googleusercontent.com/image_generation_content/0)',
+    )
+  })
+
+  test('renders Gemini lh3 generated image assets instead of placeholder URLs', async () => {
+    const payloads = extractGeminiConversationPayloads(
+      buildGeminiBatchedResponse({
+        shareId: 'e0342941181f',
+        title: 'generate an image of a ceo',
+        turns: [
+          {
+            assistantText: 'http://googleusercontent.com/image_generation_content/0',
+            assistantPayload: [
+              'http://googleusercontent.com/image_generation_content/0',
+              [
+                null,
+                null,
+                null,
+                [
+                  null,
+                  1,
+                  '1635124314996679824.png',
+                  'https://lh3.googleusercontent.com/gg/example-image-one=mp2',
+                ],
+                null,
+                null,
+                [
+                  null,
+                  1,
+                  '5559274685002010054.jpeg',
+                  'https://lh3.googleusercontent.com/gg/example-image-two=mp2',
+                ],
+              ],
+            ],
+            createdAt: [1772028570, 583237000],
+            userText: 'generate an image of a ceo',
+          },
+        ],
+      }),
+    )
+
+    const result = await convertShareUrlToMarkdown(
+      'https://gemini.google.com/share/e0342941181f',
+      {
+        browserExtractor: async (url) => ({
+          payloads,
+          sourceUrl: url,
+        }),
+        fetchImpl: async () =>
+          new Response('<html><head><title>Gemini</title></head><body></body></html>', {
+            headers: {
+              'content-type': 'text/html',
+            },
+            status: 200,
+          }),
+      },
+    )
+
+    expect(result.markdown).toContain(
+      '![Generated image](https://lh3.googleusercontent.com/gg/example-image-one=mp2)',
+    )
+    expect(result.markdown).not.toContain('example-image-two=mp2')
+    expect(result.markdown).not.toContain(
+      'https://googleusercontent.com/image_generation_content/0',
+    )
   })
 })

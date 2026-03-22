@@ -32,6 +32,106 @@ type PersistedHomeState = {
   warnings: string[]
 }
 
+function buildImageCandidates(src: string | undefined): string[] {
+  if (!src) {
+    return []
+  }
+
+  const candidates = new Set<string>()
+  const trimmed = src.trim()
+
+  if (!trimmed) {
+    return []
+  }
+
+  candidates.add(trimmed)
+
+  try {
+    const url = new URL(trimmed)
+
+    if (
+      url.hostname === 'grok.com' &&
+      /^\/users\/.+/u.test(url.pathname)
+    ) {
+      candidates.add(`https://assets.grok.com${url.pathname}`)
+      candidates.add(`https://assets.grokusercontent.com${url.pathname}`)
+    } else if (
+      url.hostname === 'assets.grok.com' &&
+      /^\/users\/.+/u.test(url.pathname)
+    ) {
+      candidates.add(`https://assets.grokusercontent.com${url.pathname}`)
+    }
+  } catch {
+    if (/^users\/.+/u.test(trimmed)) {
+      candidates.add(`https://assets.grok.com/${trimmed}`)
+      candidates.add(`https://assets.grokusercontent.com/${trimmed}`)
+    }
+  }
+
+  return [...candidates]
+}
+
+function getImageReferrerPolicy(
+  src: string | undefined,
+): React.ImgHTMLAttributes<HTMLImageElement>['referrerPolicy'] | undefined {
+  if (!src) {
+    return undefined
+  }
+
+  try {
+    const url = new URL(src)
+
+    if (
+      url.hostname.endsWith('googleusercontent.com') ||
+      url.hostname === 'lh3.googleusercontent.com'
+    ) {
+      return 'no-referrer'
+    }
+  } catch {
+    return undefined
+  }
+
+  return undefined
+}
+
+function PreviewImage(
+  props: React.ImgHTMLAttributes<HTMLImageElement>,
+) {
+  const candidates = buildImageCandidates(props.src)
+  const [candidateIndex, setCandidateIndex] = useState(0)
+  const currentSrc = candidates[candidateIndex] ?? props.src
+  const fallbackHref = candidates.at(-1) ?? props.src
+  const referrerPolicy = getImageReferrerPolicy(currentSrc)
+
+  return (
+    <span className="preview-image-wrapper">
+      <img
+        {...props}
+        crossOrigin="anonymous"
+        decoding="async"
+        loading="eager"
+        referrerPolicy={referrerPolicy}
+        src={currentSrc}
+        onError={() => {
+          if (candidateIndex < candidates.length - 1) {
+            setCandidateIndex(candidateIndex + 1)
+          }
+        }}
+      />
+      {fallbackHref ? (
+        <a
+          className="preview-image-link"
+          href={fallbackHref}
+          rel="noreferrer"
+          target="_blank"
+        >
+          Open image
+        </a>
+      ) : null}
+    </span>
+  )
+}
+
 function getRecentUrls(): string[] {
   if (typeof window === 'undefined') return []
   try {
@@ -346,6 +446,13 @@ function Home() {
     window.open(url, '_blank')
   }
 
+  function handleLogoClick() {
+    if (typeof window === 'undefined') return
+    localStorage.removeItem('chatdump.home-state.v1')
+    localStorage.removeItem('chatdump.recent-urls.v1')
+    window.location.reload()
+  }
+
   function handlePreview() {
     setOutputMode((currentMode) =>
       currentMode === 'preview' ? 'markdown' : 'preview',
@@ -505,7 +612,12 @@ function Home() {
 
       <div className="mx-auto grid max-w-[1380px] gap-4 max-[720px]:gap-3">
         <header className="flex items-center justify-between gap-4 px-1 pt-1 max-[720px]:px-0">
-          <div className="flex items-center gap-[0.9rem]">
+          <button
+            type="button"
+            onClick={handleLogoClick}
+            className="flex items-center gap-[0.9rem] rounded-lg p-1 -m-1 transition-opacity hover:opacity-70"
+            aria-label="Deep refresh"
+          >
             <span className="grid h-12 w-12 place-items-center rounded-2xl border border-[rgba(32,24,17,0.08)] bg-[linear-gradient(135deg,rgba(188,132,66,0.16),rgba(49,67,58,0.08)),rgba(255,255,255,0.56)] shadow-[inset_0_1px_0_rgba(255,255,255,0.45),0_14px_28px_rgba(62,43,23,0.08)]">
               <img
                 src="/logo-mark.svg"
@@ -513,12 +625,7 @@ function Home() {
                 className="h-8 w-8 object-contain"
               />
             </span>
-            <div className="grid gap-[0.24rem]">
-              <p className={cn(monoCapsClass, 'text-[0.72rem] text-ink-soft')}>
-                chatdump
-              </p>
-            </div>
-          </div>
+          </button>
         </header>
 
         <div className="grid gap-4">
@@ -887,6 +994,9 @@ function Home() {
                         components={{
                           a: ({ node: _node, ...props }) => (
                             <a {...props} rel="noreferrer" target="_blank" />
+                          ),
+                          img: ({ node: _node, ...props }) => (
+                            <PreviewImage {...props} />
                           ),
                           // Skip rendering empty code blocks (show as invisible
                           // dark bars otherwise) and show a language label

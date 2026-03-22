@@ -1,5 +1,6 @@
 const GROK_DEFAULT_AUTHOR = 'Grok'
 const GROK_DEFAULT_TITLE = 'Shared Grok Conversation'
+const GROK_ASSET_ORIGIN = 'https://assets.grok.com'
 
 export function isGrokShareConversationResponseUrl(rawUrl: string): boolean {
   try {
@@ -116,7 +117,7 @@ function extractGeneratedImages(candidate: unknown): Record<string, unknown>[] {
   }
 
   return candidate.flatMap((entry, index) => {
-    const url = readString(entry)
+    const url = resolveGrokAssetUrl(readString(entry))
 
     if (!url) {
       return []
@@ -148,11 +149,15 @@ function extractAttachments(
     }
 
     const url =
-      readString(attachment.url) ??
-      readString(attachment.downloadUrl) ??
-      readString(attachment.download_url) ??
-      readString(attachment.previewUrl) ??
-      readString(attachment.preview_url)
+      resolveGrokAssetUrl(
+        readString(attachment.url) ??
+          readString(attachment.downloadUrl) ??
+          readString(attachment.download_url) ??
+          readString(attachment.previewUrl) ??
+          readString(attachment.preview_url) ??
+          readString(attachment.fileUri) ??
+          readString(attachment.parsedFileUri),
+      )
 
     const name =
       readString(attachment.name) ??
@@ -173,6 +178,29 @@ function extractAttachments(
       },
     ]
   })
+}
+
+function resolveGrokAssetUrl(url: string | undefined): string | undefined {
+  if (!url) {
+    return undefined
+  }
+
+  const trimmed = url.trim()
+
+  if (!trimmed) {
+    return undefined
+  }
+
+  try {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed) || trimmed.startsWith('//')) {
+      return new URL(trimmed, GROK_ASSET_ORIGIN).toString()
+    }
+
+    const normalizedPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+    return new URL(normalizedPath, GROK_ASSET_ORIGIN).toString()
+  } catch {
+    return trimmed
+  }
 }
 
 function normalizeGrokRole(sender: unknown): string {

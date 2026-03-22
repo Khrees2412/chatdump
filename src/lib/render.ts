@@ -36,16 +36,16 @@ export function renderConversationToMarkdown(
     : conversation.messages.filter((message) => message.role !== 'system')
 
   for (const message of messages) {
-    sections.push(renderMessage(message))
+    sections.push(renderMessage(message, conversation.sourceUrl))
   }
 
   return `${sections.join('\n\n').trim()}\n`
 }
 
-function renderMessage(message: NormalizedMessage): string {
+function renderMessage(message: NormalizedMessage, sourceUrl: string): string {
   const heading = renderHeading(message)
   const body = message.blocks.length
-    ? message.blocks.map(renderBlock).filter(Boolean).join('\n\n')
+    ? message.blocks.map((block) => renderBlock(block, sourceUrl)).filter(Boolean).join('\n\n')
     : '[No visible content]'
 
   return `${heading}\n\n${body}`
@@ -62,7 +62,7 @@ function renderHeading(message: NormalizedMessage): string {
   return `## ${role}`
 }
 
-function renderBlock(block: ContentBlock): string {
+function renderBlock(block: ContentBlock, sourceUrl: string): string {
   switch (block.kind) {
     case 'text':
       if (block.text.includes('|')) {
@@ -94,13 +94,13 @@ function renderBlock(block: ContentBlock): string {
       return renderTable(block.headers, block.rows)
     case 'image':
       if (block.url) {
-        return `![${block.alt ?? block.label ?? 'Image'}](${block.url})`
+        return `![${block.alt ?? block.label ?? 'Image'}](${resolveBlockUrl(block.url, sourceUrl)})`
       }
 
       return `[Image: ${block.alt ?? block.label ?? 'unnamed'}]`
     case 'file':
       return block.url
-        ? `[Attachment: ${block.name}](${block.url})`
+        ? `[Attachment: ${block.name}](${resolveBlockUrl(block.url, sourceUrl)})`
         : `[Attachment: ${block.name}]`
     case 'unknown':
       if (block.rawText?.trim()) {
@@ -108,6 +108,30 @@ function renderBlock(block: ContentBlock): string {
       }
 
       return `[Unsupported content block: ${block.description}]`
+  }
+}
+
+function resolveBlockUrl(url: string, sourceUrl: string): string {
+  const trimmed = url.trim()
+
+  if (!trimmed) {
+    return url
+  }
+
+  try {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed) || trimmed.startsWith('//')) {
+      return new URL(trimmed, sourceUrl).toString()
+    }
+
+    const base = new URL(sourceUrl)
+    const normalizedPath =
+      trimmed.startsWith('/') || trimmed.startsWith('./') || trimmed.startsWith('../')
+        ? trimmed
+        : `/${trimmed}`
+
+    return new URL(normalizedPath, base.origin).toString()
+  } catch {
+    return url
   }
 }
 

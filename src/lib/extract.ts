@@ -401,6 +401,14 @@ async function tryBrowserFallback(
     )
 
     if (conversation) {
+      const mergedConversation = browserResult.html
+        ? mergeBrowserDomImagesIntoConversation(
+            conversation,
+            browserResult.html,
+            browserResult.sourceUrl,
+          )
+        : conversation
+
       console.info('[chatdump] Browser fallback succeeded from extracted payloads', {
         payloadCount: browserResult.payloads?.length ?? 0,
         sourceUrl: browserResult.sourceUrl,
@@ -409,7 +417,7 @@ async function tryBrowserFallback(
       })
       return {
         result: {
-          conversation,
+          conversation: mergedConversation,
           warnings,
         },
         status: 'success',
@@ -454,6 +462,20 @@ async function tryBrowserFallback(
       status: 'failed',
     }
   }
+}
+
+function mergeBrowserDomImagesIntoConversation(
+  conversation: NormalizedConversation,
+  html: string,
+  sourceUrl: string,
+): NormalizedConversation {
+  const domConversation = extractDomConversation(load(html), sourceUrl)
+
+  if (!domConversation) {
+    return conversation
+  }
+
+  return mergeDomImagesIntoConversation(conversation, domConversation)
 }
 
 function resolveBrowserFallbackResult(
@@ -520,15 +542,16 @@ export function extractConversationFromHtml(
   const $ = load(html)
   const warnings: string[] = []
   const structured = extractStructuredConversation($, sourceUrl)
+  const domConversation = extractDomConversation($, sourceUrl)
 
   if (structured) {
     return {
-      conversation: structured,
+      conversation: domConversation
+        ? mergeDomImagesIntoConversation(structured, domConversation)
+        : structured,
       warnings,
     }
   }
-
-  const domConversation = extractDomConversation($, sourceUrl)
 
   if (domConversation) {
     warnings.push('Fell back to DOM extraction; formatting may be lossy.')
@@ -1327,12 +1350,17 @@ function normalizeMessage(
   }
 
   const message = candidate as Record<string, unknown>
+  const role = normalizeRole(message)
   const blocks = compactBlocks([
     ...extractMessageBlocks(message),
     ...extractAttachments(message),
   ])
 
   if (blocks.length === 0) {
+    return null
+  }
+
+  if (shouldDropMessage(role, blocks)) {
     return null
   }
 
@@ -1344,7 +1372,7 @@ function normalizeMessage(
       normalizeTimestamp(message.created_at) ??
       undefined,
     id: readString(message.id) ?? fallbackId,
-    role: normalizeRole(message),
+    role,
   }
 }
 
@@ -1363,15 +1391,23 @@ function extractMessageBlocks(message: Record<string, unknown>): ContentBlock[] 
   const contentType = readString(content.content_type) ?? readString(content.type)
 
   if (contentType === 'code') {
-    blocks.push({
-      code:
-        readString(content.text) ??
-        readString(content.code) ??
-        readFirstString(content.parts) ??
-        '',
-      kind: 'code',
-      language: readString(content.language),
-    } satisfies CodeBlock)
+    const codeText =
+      readString(content.text) ??
+      readString(content.code) ??
+      readFirstString(content.parts) ??
+      ''
+
+    if (looksLikeDallECodeBlock(codeText)) {
+      blocks.push(textBlock('[DALL-E Image Generated]'))
+    } else {
+      blocks.push({
+        code: codeText,
+        kind: 'code',
+        language: readString(content.language),
+      } satisfies CodeBlock)
+    }
+
+    return blocks
   }
 
   for (const part of readParts(content)) {
@@ -1420,29 +1456,27 @@ function normalizePart(part: unknown): ContentBlock[] {
 
   const record = part as Record<string, unknown>
   const type = readString(record.content_type) ?? readString(record.type)
+  const imageBlock = normalizeImageRecord(record, type)
+
+  if (imageBlock) {
+    return [imageBlock]
+  }
 
   if (type === 'code') {
+    const codeText =
+      readString(record.text) ??
+      readString(record.code) ??
+      readFirstString(record.parts) ??
+      ''
+    if (looksLikeDallEParameters(record) || looksLikeDallECodeBlock(codeText)) {
+      return [textBlock('[DALL-E Image Generated]')]
+    }
     return [
       {
-        code:
-          readString(record.text) ??
-          readString(record.code) ??
-          readFirstString(record.parts) ??
-          '',
+        code: codeText,
         kind: 'code',
         language: readString(record.language),
       } satisfies CodeBlock,
-    ]
-  }
-
-  if (type === 'image') {
-    return [
-      {
-        alt: readString(record.alt),
-        kind: 'image',
-        label: readString(record.name) ?? readString(record.label),
-        url: readString(record.url),
-      } satisfies ImageBlock,
     ]
   }
 
@@ -1464,8 +1498,120 @@ function normalizePart(part: unknown): ContentBlock[] {
     return record.parts.flatMap((nested) => normalizePart(nested))
   }
 
+  if (looksLikeDallEParameters(record)) {
+    const size = readString(record.size) ?? record.size
+    const prompt = readString(record.prompt)
+    if (prompt) {
+      return [textBlock(`[DALL-E: ${prompt}]`)]
+    }
+    return [textBlock(`[DALL-E Image: ${size}]`)]
+  }
+
   return []
 }
+
+function normalizeImageRecord(
+  record: Record<string, unknown>,
+  type?: string,
+): ImageBlock | null {
+  const mimeType =
+    readString(record.mime_type) ??
+    readString(record.mimeType) ??
+    readString(record.contentType)
+  const url =
+    readString(record.url) ??
+    readString(record.download_url) ??
+    readString(record.downloadUrl) ??
+    readString(record.image_url) ??
+    readString(record.imageUrl) ??
+    readString(record.src) ??
+    readNestedString(record, [
+      ['metadata', 'url'],
+      ['metadata', 'download_url'],
+      ['metadata', 'downloadUrl'],
+      ['metadata', 'image_url'],
+      ['metadata', 'imageUrl'],
+      ['asset', 'url'],
+      ['asset', 'download_url'],
+      ['asset', 'downloadUrl'],
+      ['asset', 'image_url'],
+      ['asset', 'imageUrl'],
+      ['file', 'url'],
+      ['file', 'download_url'],
+      ['file', 'downloadUrl'],
+    ])
+  const assetPointer =
+    readString(record.asset_pointer) ??
+    readString(record.assetPointer) ??
+    readNestedString(record, [
+      ['asset', 'asset_pointer'],
+      ['asset', 'assetPointer'],
+      ['metadata', 'asset_pointer'],
+      ['metadata', 'assetPointer'],
+    ])
+  const isImageLike =
+    type === 'image' ||
+    type === 'image_url' ||
+    type === 'image_asset_pointer' ||
+    mimeType?.startsWith('image/') === true ||
+    Boolean(url) ||
+    Boolean(assetPointer)
+
+  if (!isImageLike) {
+    return null
+  }
+
+  const label =
+    readString(record.alt) ??
+    readString(record.name) ??
+    readString(record.label) ??
+    readString(record.title) ??
+    readString(record.file_name) ??
+    readString(record.filename) ??
+    (assetPointer ? 'Generated image' : undefined)
+
+  return {
+    alt: readString(record.alt) ?? label,
+    kind: 'image',
+    label,
+    url,
+  }
+}
+
+function looksLikeDallEParameters(record: Record<string, unknown>): boolean {
+  const keys = Object.keys(record)
+  const hasSizeField = keys.includes('size')
+  const hasNField = keys.includes('n')
+  const hasPromptField = keys.includes('prompt')
+  const hasRevisionsField = keys.includes('revisions')
+  const hasStyleField = keys.includes('style')
+  return (
+    (hasSizeField && hasNField) ||
+    hasPromptField ||
+    hasRevisionsField ||
+    hasStyleField
+  )
+}
+
+function looksLikeDallECodeBlock(codeText: string): boolean {
+  if (!codeText.trim()) return false
+  try {
+    const parsed = JSON.parse(codeText)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return false
+    }
+    const keys = Object.keys(parsed)
+    return (
+      (keys.includes('size') && keys.includes('n')) ||
+      keys.includes('prompt') ||
+      keys.includes('revisions') ||
+      keys.includes('style')
+    )
+  } catch {
+    return false
+  }
+}
+
 function extractAttachments(message: Record<string, unknown>): ContentBlock[] {
   const attachmentCollections = [
     message.attachments,
@@ -1490,8 +1636,16 @@ function extractAttachments(message: Record<string, unknown>): ContentBlock[] {
         readString(attachment.filename) ??
         readString(attachment.display_name) ??
         'attachment'
-      const url = readString(attachment.url) ?? readString(attachment.download_url)
-      const mimeType = readString(attachment.mime_type) ?? readString(attachment.mimeType)
+      const url =
+        readString(attachment.url) ??
+        readString(attachment.download_url) ??
+        readString(attachment.downloadUrl) ??
+        readString(attachment.image_url) ??
+        readString(attachment.imageUrl)
+      const mimeType =
+        readString(attachment.mime_type) ??
+        readString(attachment.mimeType) ??
+        readString(attachment.contentType)
 
       if (mimeType?.startsWith('image/')) {
         blocks.push({
@@ -1534,6 +1688,24 @@ function normalizeRole(message: Record<string, unknown>): MessageRole {
   }
 }
 
+function shouldDropMessage(role: MessageRole, blocks: ContentBlock[]): boolean {
+  if (role !== 'unknown') {
+    return false
+  }
+
+  return blocks.every((block) => {
+    if (block.kind === 'image') {
+      return !block.url
+    }
+
+    if (block.kind === 'text') {
+      return block.text === '[DALL-E Image Generated]'
+    }
+
+    return false
+  })
+}
+
 function normalizeAuthorName(message: Record<string, unknown>): string | undefined {
   const author = asRecord(message.author)
   return (
@@ -1547,6 +1719,12 @@ function extractDomConversation(
   $: CheerioAPI,
   sourceUrl: string,
 ): NormalizedConversation | null {
+  const claudeDomConversation = extractClaudeDomConversation($, sourceUrl)
+
+  if (claudeDomConversation) {
+    return claudeDomConversation
+  }
+
   const elements = $('[data-message-author-role]').toArray()
 
   if (elements.length === 0) {
@@ -1579,6 +1757,157 @@ function extractDomConversation(
     sourceUrl,
     title: extractPageTitle($, sourceUrl),
   }
+}
+
+function extractClaudeDomConversation(
+  $: CheerioAPI,
+  sourceUrl: string,
+): NormalizedConversation | null {
+  if (tryNormalizeShareUrl(sourceUrl)?.provider !== 'claude') {
+    return null
+  }
+
+  const elements = $('[data-testid="user-message"], .font-claude-response, .standard-markdown')
+    .toArray()
+    .filter((element) => {
+      const parentMatch = $(element)
+        .parents('[data-testid="user-message"], .font-claude-response, .standard-markdown')
+        .first()
+
+      return parentMatch.length === 0
+    })
+
+  if (elements.length === 0) {
+    return null
+  }
+
+  const messages: NormalizedMessage[] = []
+
+  elements.forEach((element, index) => {
+    const isUser = $(element).attr('data-testid') === 'user-message'
+    const role: MessageRole = isUser ? 'user' : 'assistant'
+    const blocks = compactBlocks([
+      ...extractBlocksFromNodes($(element).contents().toArray(), $),
+      ...(role === 'assistant' ? extractClaudeDomImageBlocks(element, $) : []),
+    ])
+
+    if (blocks.length === 0) {
+      return
+    }
+
+    messages.push({
+      blocks,
+      id: `claude-dom-${index + 1}`,
+      role,
+    })
+  })
+
+  if (messages.length === 0) {
+    return null
+  }
+
+  return {
+    messages,
+    sourceUrl,
+    title: extractPageTitle($, sourceUrl),
+  }
+}
+
+function extractClaudeDomImageBlocks(
+  element: AnyNode,
+  $: CheerioAPI,
+): ImageBlock[] {
+  const seen = new Set<string>()
+
+  return $(element)
+    .find('img')
+    .toArray()
+    .map((image) => extractImageBlock(image, $))
+    .filter((block) => {
+      if (!block.url || isClaudeDecorativeImage(block.url)) {
+        return false
+      }
+
+      if (seen.has(block.url)) {
+        return false
+      }
+
+      seen.add(block.url)
+      return true
+    })
+}
+
+function isClaudeDecorativeImage(url: string): boolean {
+  return /google\.com\/s2\/favicons/i.test(url)
+}
+
+function mergeDomImagesIntoConversation(
+  structured: NormalizedConversation,
+  dom: NormalizedConversation,
+): NormalizedConversation {
+  const messages = structured.messages.map((message, index) =>
+    mergeDomImagesIntoMessage(message, dom.messages[index]),
+  )
+
+  return {
+    ...structured,
+    messages,
+  }
+}
+
+function mergeDomImagesIntoMessage(
+  message: NormalizedMessage,
+  domMessage: NormalizedMessage | undefined,
+): NormalizedMessage {
+  if (!domMessage || domMessage.role !== message.role) {
+    return message
+  }
+
+  const domImages = domMessage.blocks.filter(
+    (block): block is ImageBlock => block.kind === 'image' && Boolean(block.url),
+  )
+
+  if (domImages.length === 0) {
+    return message
+  }
+
+  let domImageIndex = 0
+  let changed = false
+  const mergedBlocks = message.blocks.map((block) => {
+    if (block.kind !== 'image' || block.url) {
+      return block
+    }
+
+    const replacement = domImages[domImageIndex]
+
+    if (!replacement) {
+      return block
+    }
+
+    domImageIndex += 1
+    changed = true
+
+    return {
+      ...replacement,
+      alt: block.alt ?? replacement.alt,
+      label: block.label ?? replacement.label,
+    }
+  })
+
+  const hasStructuredImages = message.blocks.some((block) => block.kind === 'image')
+  const extraDomImages = !hasStructuredImages ? domImages : domImages.slice(domImageIndex)
+
+  if (extraDomImages.length > 0) {
+    changed = true
+    mergedBlocks.push(...extraDomImages)
+  }
+
+  return changed
+    ? {
+        ...message,
+        blocks: compactBlocks(mergedBlocks),
+      }
+    : message
 }
 
 function normalizeDomRole(value: string | undefined): MessageRole {
@@ -1890,6 +2219,27 @@ function readFirstString(value: unknown): string | undefined {
   return Array.isArray(value)
     ? value.find((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
     : undefined
+}
+
+function readNestedString(
+  record: Record<string, unknown>,
+  paths: string[][],
+): string | undefined {
+  for (const path of paths) {
+    let value: unknown = record
+
+    for (const segment of path) {
+      value = asRecord(value)?.[segment]
+    }
+
+    const result = readString(value)
+
+    if (result) {
+      return result
+    }
+  }
+
+  return undefined
 }
 
 function normalizeTimestamp(value: unknown): string | undefined {

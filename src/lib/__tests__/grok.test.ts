@@ -69,6 +69,50 @@ function buildGrokShareResponse(): string {
   })
 }
 
+function buildGrokShareResponseWithRelativeImages(): string {
+  return JSON.stringify({
+    allowIndexing: true,
+    conversation: {
+      conversationId: '35c7683a-8a9c-4718-b237-b07669900a77',
+      createTime: '2026-03-20T22:44:53.139787Z',
+      modifyTime: '2026-03-22T13:49:22.904Z',
+      title: 'GLM: Chinese Open-Source LLM Evolution',
+    },
+    responses: [
+      {
+        createTime: '2026-03-22T13:49:18.600Z',
+        fileAttachments: [],
+        generatedImageUrls: [],
+        imageAttachments: [],
+        message: 'generate an image of an api flow',
+        responseId: 'cb2a53b5-45d8-48df-ae42-3e7bb0f7625b',
+        sender: 'human',
+      },
+      {
+        createTime: '2026-03-22T13:49:22.904Z',
+        fileAttachments: ['bcc2a557-a1cb-4829-a6ee-5e1c89a6734f'],
+        fileAttachmentsMetadata: [
+          {
+            fileMetadataId: 'bcc2a557-a1cb-4829-a6ee-5e1c89a6734f',
+            fileMimeType: 'image/jpeg',
+            fileName: 'image.jpg',
+            fileUri:
+              'users/795f19db-cef1-410d-bbb5-ee64cb944e89/generated/bcc2a557-a1cb-4829-a6ee-5e1c89a6734f/image.jpg',
+          },
+        ],
+        generatedImageUrls: [
+          'users/795f19db-cef1-410d-bbb5-ee64cb944e89/generated/bcc2a557-a1cb-4829-a6ee-5e1c89a6734f/image.jpg',
+        ],
+        imageAttachments: [],
+        message:
+          "I generated images with the prompt: 'image of an API flow chart illustrating revenue streams.'",
+        responseId: 'bed3c9b2-827c-4e0d-b439-a14dce996388',
+        sender: 'assistant',
+      },
+    ],
+  })
+}
+
 describe('extractGrokConversationPayloads', () => {
   test('parses Grok share responses into normalized messages', () => {
     const payloads = extractGrokConversationPayloads(buildGrokShareResponse())
@@ -106,6 +150,25 @@ describe('extractGrokConversationPayloads', () => {
           content_type: 'image',
           label: 'Generated image 1',
           url: 'https://assets.grok.com/generated/soviet-map.png',
+        },
+      ],
+    })
+  })
+
+  test('resolves relative Grok generated image URLs to the asset host', () => {
+    const payloads = extractGrokConversationPayloads(
+      buildGrokShareResponseWithRelativeImages(),
+    )
+    const [conversation] = payloads
+    const messages = Array.isArray(conversation?.messages) ? conversation.messages : []
+
+    expect(messages[1]?.content).toEqual({
+      parts: [
+        "I generated images with the prompt: 'image of an API flow chart illustrating revenue streams.'",
+        {
+          content_type: 'image',
+          label: 'Generated image 1',
+          url: 'https://assets.grok.com/users/795f19db-cef1-410d-bbb5-ee64cb944e89/generated/bcc2a557-a1cb-4829-a6ee-5e1c89a6734f/image.jpg',
         },
       ],
     })
