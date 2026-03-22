@@ -6,6 +6,7 @@ import rehypeRaw from 'rehype-raw'
 import rehypeHighlight from 'rehype-highlight'
 import { useDeferredValue, useEffect, useRef, useState, startTransition } from 'react'
 import { Button } from '../components/ui/button'
+import { ShareDropdown } from '../components/ui/share-dropdown'
 import { cn } from '../lib/cn'
 import { splitMarkdownForPreview } from '../lib/markdown-preview'
 import { stripMarkdown } from '../lib/markdown-utils'
@@ -110,8 +111,8 @@ function readPersistedHomeState(): PersistedHomeState | null {
       typeof parsedState.markdown === 'string' ? parsedState.markdown : ''
     const warnings = Array.isArray(parsedState.warnings)
       ? parsedState.warnings.filter(
-          (warning: unknown): warning is string => typeof warning === 'string',
-        )
+        (warning: unknown): warning is string => typeof warning === 'string',
+      )
       : []
 
     if (!url && !markdown && warnings.length === 0 && outputMode === 'markdown') {
@@ -178,6 +179,7 @@ function Home() {
   const [hasHydratedState, setHasHydratedState] = useState(false)
   const [isPlainText, setIsPlainText] = useState(false)
   const [recentUrls, setRecentUrls] = useState<string[]>([])
+  const [isShareDropdownOpen, setIsShareDropdownOpen] = useState(false)
   const urlInputRef = useRef<HTMLInputElement | null>(null)
   const outputSectionRef = useRef<HTMLElement | null>(null)
   const outputBodyRef = useRef<HTMLElement | null>(null)
@@ -203,7 +205,7 @@ function Home() {
       ? 'Copied'
       : copyState === 'error'
         ? 'Copy failed'
-      : 'Copy Markdown'
+        : 'Copy .MD'
   const previewLabel = isRenderedPreview ? 'Show Markdown' : 'Show Preview'
   const plainTextLabel = isPlainText ? 'Show Markdown' : 'Plain Text'
   const displayMarkdown = isPlainText ? stripMarkdown(deferredMarkdown) : deferredMarkdown
@@ -338,6 +340,10 @@ function Home() {
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(urlBlob)
+  }
+
+  function handleOpenProvider(url: string) {
+    window.open(url, '_blank')
   }
 
   function handlePreview() {
@@ -793,6 +799,13 @@ function Home() {
                     </div>
 
                     <div className="flex items-center gap-2 max-[720px]:order-1">
+                      <ShareDropdown
+                        markdown={displayMarkdown}
+                        isOpen={isShareDropdownOpen}
+                        onOpenChange={setIsShareDropdownOpen}
+                        onOpenProvider={handleOpenProvider}
+                      />
+
                       <Button
                         aria-label={copyLabel}
                         className="max-[720px]:min-h-11 max-[720px]:w-11 max-[720px]:justify-center max-[720px]:gap-0 max-[720px]:px-0 max-[720px]:pl-0"
